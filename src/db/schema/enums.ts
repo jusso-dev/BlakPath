@@ -168,6 +168,17 @@ export const boardTaskPriority = pgEnum('board_task_priority', [
   'urgent',
 ]);
 
+/**
+ * Lifecycle of a Confirmation of Aboriginality certificate. Only a `signed`
+ * (and not revoked) certificate is valid or downloadable. A certificate records
+ * a decision authorised humans finalised — the software never determines it.
+ */
+export const certificateStatus = pgEnum('certificate_status', [
+  'draft',
+  'signed',
+  'revoked',
+]);
+
 /** Lifecycle of a custom form. */
 export const formStatus = pgEnum('form_status', ['draft', 'published', 'closed']);
 

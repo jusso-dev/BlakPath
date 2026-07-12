@@ -57,6 +57,13 @@
       "when": 1783842806744,
       "tag": "0007_sparkling_maximus",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1783845937802,
+      "tag": "0008_sad_multiple_man",
+      "breakpoints": true
     }
   ]
 }

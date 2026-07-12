@@ -1,0 +1,36 @@
+import { NextResponse } from 'next/server';
+import { toErrorResponse, withRequestTenant } from '@/lib/http/tenant-route';
+import {
+  requireRecentAuth,
+  StepUpRequiredError,
+  STEP_UP_WINDOWS,
+} from '@/lib/auth/session';
+import { signCertificate } from '@/domains/certificates';
+
+/**
+ * POST /api/certificates/[id]/sign — sign a draft certificate.
+ *
+ * SECURITY: signing is an authority-bearing act, so it requires STEP-UP — a
+ * recently-authenticated session — in addition to the `certificate:sign`
+ * capability the service checks. A long-lived "remember me" session must never
+ * be enough on its own.
+ */
+export async function POST(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Response> {
+  try {
+    await requireRecentAuth(STEP_UP_WINDOWS.sensitiveAction);
+    const { id } = await params;
+    const certificate = await withRequestTenant(() => signCertificate(id));
+    return NextResponse.json({ id: certificate.id, status: certificate.status });
+  } catch (error) {
+    if (error instanceof StepUpRequiredError) {
+      return NextResponse.json(
+        { error: 'Re-authentication required', code: 'STEP_UP_REQUIRED' },
+        { status: 401 },
+      );
+    }
+    return toErrorResponse(error);
+  }
+}

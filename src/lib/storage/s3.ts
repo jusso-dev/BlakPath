@@ -186,6 +186,28 @@ export async function getObjectBytes(params: {
   return Buffer.from(bytes);
 }
 
+/**
+ * Upload bytes directly to a bucket (e.g. a server-rendered certificate PDF).
+ * Server-side encryption is applied to match the bucket policy. The key must be
+ * tenant-namespaced by the caller.
+ */
+export async function putObjectBytes(params: {
+  bucket: string;
+  key: string;
+  body: Buffer;
+  contentType: string;
+}): Promise<void> {
+  await s3.send(
+    new PutObjectCommand({
+      Bucket: params.bucket,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+      ServerSideEncryption: serverSideEncryption(),
+    }),
+  );
+}
+
 /** Delete a single object (e.g. removing an infected or rejected upload). */
 export async function deleteObject(params: {
   bucket: string;

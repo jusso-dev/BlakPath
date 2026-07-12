@@ -16,6 +16,7 @@ export * from './reviews';
 export * from './family';
 export * from './meetings';
 export * from './decisions';
+export * from './certificates';
 export * from './tasks';
 export * from './forms';
 export * from './notifications';

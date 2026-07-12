@@ -176,6 +176,7 @@ export type AuditAction =
   | 'decision.reason_recorded'
   // Certificate generation / download.
   | 'certificate.generated'
+  | 'certificate.signed'
   | 'certificate.viewed'
   | 'certificate.downloaded'
   | 'certificate.reissued'
