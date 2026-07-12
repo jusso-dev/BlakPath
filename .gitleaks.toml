@@ -1,0 +1,9 @@
+# The base64 value below is a public, deterministic encryption fixture used only
+# by GitHub Actions. Keeping this exception exact preserves scanning for all
+# real credentials while allowing Gitleaks to scan the repository's full history.
+[allowlist]
+description = "Public CI encryption fixture"
+regexTarget = "match"
+regexes = [
+  '''ENCRYPTION_MASTER_KEY:\\s*dGVzdC10ZXN0LXRlc3QtdGVzdC10ZXN0LXRlc3QtMTIzNDU=''',
+]

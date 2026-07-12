@@ -17,7 +17,7 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: '20.18.1'
+  NODE_VERSION: '20'
   PNPM_VERSION: '9.12.0'
 
 jobs:
@@ -59,7 +59,7 @@ jobs:
       # above is the gate. Surfaced in the job log for triage.
       - name: OSV Scanner (informational)
         continue-on-error: true
-        uses: google/osv-scanner-action@v1.9.1
+        uses: google/osv-scanner-action/osv-scanner-action@v2.3.8
         with:
           scan-args: |-
             --lockfile=pnpm-lock.yaml
@@ -119,11 +119,20 @@ jobs:
           push: false
           load: true
           tags: blakpath:ci
+          # These public placeholders satisfy Next.js route validation while
+          # building. They exist only in the intermediate build stage.
+          build-args: |
+            DATABASE_URL=postgres://blakpath:blakpath@localhost:5432/blakpath
+            REDIS_URL=redis://localhost:6379
+            BETTER_AUTH_SECRET=ci-build-secret-value-at-least-32-characters-long
+            ENCRYPTION_MASTER_KEY=dGVzdC10ZXN0LXRlc3QtdGVzdC10ZXN0LXRlc3QtMTIzNDU=
+            S3_ACCESS_KEY_ID=test
+            S3_SECRET_ACCESS_KEY=test-secret
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Trivy vulnerability scan (SARIF)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: blakpath:ci
           format: sarif
@@ -138,7 +147,7 @@ jobs:
           sarif_file: trivy-results.sarif
 
       - name: Trivy scan (gate — fail on CRITICAL,HIGH)
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@v0.28.0
         with:
           image-ref: blakpath:ci
           format: table

@@ -18,18 +18,16 @@
 #   - tini as PID 1 for correct SIGTERM propagation → graceful shutdown.
 ###############################################################################
 
-ARG NODE_VERSION=20.18.1
+ARG NODE_VERSION=20
 
 ########################################  base  ###############################
-FROM node:${NODE_VERSION}-slim AS base
+FROM node:${NODE_VERSION}-alpine AS base
 ENV PNPM_HOME=/pnpm
 ENV PATH="${PNPM_HOME}:${PATH}"
 # tini gives us a real init for signal handling; ca-certificates for TLS to
 # managed Postgres/Redis/S3. curl is used only by the web HEALTHCHECK; procps
 # provides pgrep for the worker HEALTHCHECK.
-RUN apt-get update \
-  && apt-get install -y --no-install-recommends tini curl ca-certificates procps \
-  && rm -rf /var/lib/apt/lists/*
+RUN apk add --no-cache tini curl ca-certificates procps
 RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
 WORKDIR /app
 
@@ -43,14 +41,46 @@ RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
 #######################################  build  ##############################
 FROM base AS build
 ENV NEXT_TELEMETRY_DISABLED=1
+# Next.js evaluates route handlers while collecting page data. These arguments
+# are supplied by CI (and should be supplied by production image builds) so
+# validation can run without baking runtime secrets into the final image.
+ARG DATABASE_URL
+ARG REDIS_URL
+ARG BETTER_AUTH_SECRET
+ARG ENCRYPTION_MASTER_KEY
+ARG S3_ACCESS_KEY_ID
+ARG S3_SECRET_ACCESS_KEY
+ENV DATABASE_URL=${DATABASE_URL} \
+    REDIS_URL=${REDIS_URL} \
+    BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET} \
+    ENCRYPTION_MASTER_KEY=${ENCRYPTION_MASTER_KEY} \
+    S3_ACCESS_KEY_ID=${S3_ACCESS_KEY_ID} \
+    S3_SECRET_ACCESS_KEY=${S3_SECRET_ACCESS_KEY}
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 # Build the Next.js standalone server. `output: 'standalone'` is set in
 # next.config.ts, producing .next/standalone with a minimal node_modules.
 RUN pnpm build
 
+######################################  runtime  #############################
+# Keep build tooling (Corepack/pnpm and its transitive dependencies) out of the
+# production image. The floating Node 20 Alpine tag receives security updates;
+# the application remains constrained by package.json's Node >=20.11 engine.
+FROM node:${NODE_VERSION}-alpine AS runtime
+RUN apk upgrade --no-cache \
+  && apk add --no-cache tini curl ca-certificates
+# npm, Corepack, and Yarn are build tooling; the standalone server executes
+# directly with node. Removing them avoids shipping their unused dependency
+# trees in the production image.
+RUN rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+    /opt/yarn* \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx /usr/local/bin/corepack \
+    /usr/local/bin/yarn /usr/local/bin/yarnpkg
+WORKDIR /app
+
 ######################################  runner  ##############################
-FROM base AS runner
+FROM runtime AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
@@ -58,8 +88,8 @@ ENV HOSTNAME=0.0.0.0
 WORKDIR /app
 
 # Non-root runtime user.
-RUN groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs nextjs
+RUN addgroup -S -g 1001 nodejs \
+  && adduser -S -u 1001 -G nodejs nextjs
 
 # Next.js standalone: server + only the node_modules it actually needs.
 COPY --from=build --chown=nextjs:nodejs /app/.next/standalone ./
@@ -85,8 +115,8 @@ FROM base AS worker
 ENV NODE_ENV=production
 WORKDIR /app
 
-RUN groupadd --system --gid 1001 nodejs \
-  && useradd --system --uid 1001 --gid nodejs worker
+RUN addgroup -S -g 1001 nodejs \
+  && adduser -S -u 1001 -G nodejs worker
 
 # Full dependency set (tsx lives in devDependencies and is required at runtime
 # to execute the TypeScript worker). Reuses the cached pnpm store.
