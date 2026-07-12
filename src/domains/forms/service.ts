@@ -6,6 +6,9 @@ import { forms, formInvitations, formResponses } from '@/db/schema';
 import { currentScope, scopeFor } from '@/db/tenant-db';
 import { recordAudit } from '@/domains/audit/service';
 import { requireTenantContext } from '@/lib/tenancy/context';
+import { env } from '@/lib/env';
+import { queueTenantEmail } from '@/lib/email/queue';
+import { logger } from '@/lib/observability/logger';
 import { requireAny, subjectFromContext } from '@/lib/permissions/check';
 import { AuthorizationError } from '@/lib/permissions/errors';
 import { parseFieldsJson, validateResponse, type FormField } from '@/lib/forms/fields';
@@ -225,6 +228,40 @@ export async function createInvitation(
     result: 'success',
     after: { data: { formId }, allow: ['formId'] },
   });
+
+  // Email the recipient their completion link. This is the one place the raw
+  // token is legitimately sent to its intended recipient — tenant emails go
+  // through the queue (auth emails send synchronously via the authMailer).
+  // Best-effort: a delivery hiccup must not fail invitation creation, but a
+  // genuinely thrown enqueue error should still surface in development.
+  if (input.recipientEmail) {
+    const completionUrl = `${env.APP_URL}/form/${token}`;
+    const name = input.recipientName ?? 'there';
+    try {
+      await queueTenantEmail({
+        organisationId: scope.organisationId,
+        correlationId: ctx.correlationId,
+        to: input.recipientEmail,
+        subject: 'You have been invited to complete a form in BlakPath',
+        text: [
+          `Hi ${name},`,
+          '',
+          `You have been invited to complete the form "${form.title}".`,
+          'Open the link below to begin. It will expire after a while.',
+          '',
+          completionUrl,
+          '',
+          'BlakPath',
+        ].join('\n'),
+      });
+    } catch (err) {
+      if (env.NODE_ENV === 'development') throw err;
+      logger.error(
+        { organisationId: scope.organisationId, invitationId: invitation.id, err },
+        'failed to enqueue invitation email',
+      );
+    }
+  }
 
   return { invitation, token, path: `/form/${token}` };
 }

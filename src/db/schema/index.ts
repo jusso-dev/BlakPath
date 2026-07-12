@@ -18,4 +18,6 @@ export * from './meetings';
 export * from './decisions';
 export * from './tasks';
 export * from './forms';
+export * from './notifications';
+export * from './preferences';
 export * from './audit';

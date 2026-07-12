@@ -27,13 +27,12 @@ import { cn } from '@/lib/utils';
  * Organisation stats dashboard (client).
  *
  * A grid of stat widgets the user can drag to reorder; the chosen order persists
- * to `localStorage`. Every widget is a plain, calm summary of where work sits.
+ * per-user to the server so it follows them across devices. Every widget is a
+ * plain, calm summary of where work sits.
  *
  * PRODUCT INVARIANT: these widgets organise human work — what to scan, review or
  * schedule. Nothing here scores, ranks or determines a person's Aboriginality.
  */
-
-const STORAGE_KEY = 'blakpath:dashboard:widget-order';
 
 /** The fixed set of widget ids, in their default order. */
 const DEFAULT_ORDER = [
@@ -72,25 +71,28 @@ function humanise(key: string, labels: Record<string, string>): string {
   return labels[key] ?? key;
 }
 
-/** Read a saved, validated order from localStorage, or the default. */
-function loadOrder(): WidgetId[] {
-  if (typeof window === 'undefined') return [...DEFAULT_ORDER];
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [...DEFAULT_ORDER];
-    const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [...DEFAULT_ORDER];
-    const valid = parsed.filter((id): id is WidgetId =>
-      (DEFAULT_ORDER as readonly string[]).includes(id as string),
-    );
-    // Append any widgets not present in the saved order (e.g. after an upgrade).
-    for (const id of DEFAULT_ORDER) {
-      if (!valid.includes(id)) valid.push(id);
-    }
-    return valid;
-  } catch {
-    return [...DEFAULT_ORDER];
+/** Coerce an arbitrary saved order into a valid, complete widget order. */
+function normaliseOrder(parsed: unknown): WidgetId[] {
+  if (!Array.isArray(parsed)) return [...DEFAULT_ORDER];
+  const valid = parsed.filter((id): id is WidgetId =>
+    (DEFAULT_ORDER as readonly string[]).includes(id as string),
+  );
+  // Append any widgets not present in the saved order (e.g. after an upgrade).
+  for (const id of DEFAULT_ORDER) {
+    if (!valid.includes(id)) valid.push(id);
   }
+  return valid;
+}
+
+/** Persist the widget order to the server (best-effort; failures are silent). */
+function persistOrder(order: WidgetId[]): void {
+  void fetch('/api/dashboard/layout', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ order }),
+  }).catch(() => {
+    // A failed save must never break the drag interaction.
+  });
 }
 
 /** A small labelled row: name on the left, count on the right. */
@@ -165,12 +167,22 @@ export function StatDashboard({
 }): ReactNode {
   const [order, setOrder] = useState<WidgetId[]>([...DEFAULT_ORDER]);
 
-  // Hydrate the saved order AFTER mount so the server and first client render
-  // agree (localStorage is unavailable on the server). This deferred set-state
-  // is the intended pattern here, not an accidental render loop.
+  // Load the saved order from the server AFTER mount so the first client render
+  // matches the server render (the default order), then reconcile.
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setOrder(loadOrder());
+    let cancelled = false;
+    void fetch('/api/dashboard/layout')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: { order?: unknown } | null) => {
+        if (cancelled || !data || data.order == null) return;
+        setOrder(normaliseOrder(data.order));
+      })
+      .catch(() => {
+        // Keep the default order if the layout cannot be loaded.
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const sensors = useSensors(
@@ -186,22 +198,15 @@ export function StatDashboard({
       const to = current.indexOf(over.id as WidgetId);
       if (from === -1 || to === -1) return current;
       const next = arrayMove(current, from, to);
-      try {
-        window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
-      } catch {
-        // A full or disabled localStorage must not break the interaction.
-      }
+      persistOrder(next);
       return next;
     });
   }
 
   function resetLayout() {
-    try {
-      window.localStorage.removeItem(STORAGE_KEY);
-    } catch {
-      // Ignore: resetting in-memory state below is what matters.
-    }
-    setOrder([...DEFAULT_ORDER]);
+    const next = [...DEFAULT_ORDER];
+    setOrder(next);
+    persistOrder(next);
   }
 
   const applicationStatuses = useMemo(

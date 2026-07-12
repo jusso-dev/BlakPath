@@ -1,6 +1,6 @@
 import { TaskBoard, type BoardTask } from '@/components/board/task-board';
 import { withRequestTenant } from '@/lib/http/tenant-route';
-import { listTasks } from '@/domains/tasks';
+import { listBoardTasks } from '@/domains/tasks';
 
 /**
  * Work board (RSC).
@@ -15,13 +15,13 @@ export default async function BoardPage() {
 
   try {
     tasks = await withRequestTenant(async () => {
-      const rows = await listTasks();
+      const rows = await listBoardTasks();
       return rows.map((row) => ({
         id: row.id,
         title: row.title,
         status: row.status,
         priority: row.priority,
-        assigneeName: null,
+        assigneeName: row.assigneeName,
         dueAt: row.dueAt ? row.dueAt.toISOString() : null,
       }));
     });

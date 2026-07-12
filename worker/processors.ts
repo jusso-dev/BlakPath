@@ -1,7 +1,14 @@
+import { and, eq } from 'drizzle-orm';
 import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 import { QueueName, type TenantJob } from '@/lib/queues';
 import { processEvidenceScan } from '@/domains/evidence';
+import { env } from '@/lib/env';
+import { scopeFor } from '@/db/tenant-db';
+import { notifications, users } from '@/db/schema';
+import { sendEmail } from '@/lib/email/mailer';
+import { markEmailed, renderNotificationEmail } from '@/domains/notifications';
+import { verifyChain } from '@/domains/audit';
 
 /**
  * Processor registry for the BlakPath background worker.
@@ -74,32 +81,152 @@ const malwareScanProcessor: ProcessorFn = async (job, logger) => {
 };
 
 /**
+ * Email processor. Delivers a tenant email (invitation, notification copy) via
+ * SMTP. The body may contain a bearer link (e.g. a form completion URL), so it
+ * is NEVER logged — `sendEmail` logs only a redacted recipient and the subject.
+ */
+const emailProcessor: ProcessorFn = async (job, logger) => {
+  const data = job.data as {
+    to?: unknown;
+    subject?: unknown;
+    text?: unknown;
+    html?: unknown;
+  };
+  if (
+    typeof data.to !== 'string' ||
+    typeof data.subject !== 'string' ||
+    typeof data.text !== 'string'
+  ) {
+    // Malformed payload is a bug, not a transient fault — do not retry forever.
+    logger.error({ jobId: job.id }, 'email job payload invalid — dropping');
+    return;
+  }
+  await sendEmail({
+    to: data.to,
+    subject: data.subject,
+    text: data.text,
+    ...(typeof data.html === 'string' ? { html: data.html } : {}),
+  });
+};
+
+/**
+ * Notification processor. Loads the tenant-scoped notification, looks up the
+ * recipient's email, and sends a short "you have a new notification" message
+ * that links back into the app (never a bearer URL). Marks the row emailed.
+ */
+const notificationProcessor: ProcessorFn = async (job, logger) => {
+  const { organisationId, correlationId } = job.data;
+  const notificationId = (job.data as { notificationId?: unknown }).notificationId;
+  if (typeof notificationId !== 'string' || notificationId.length === 0) {
+    logger.error({ jobId: job.id }, 'notification job missing notificationId — dropping');
+    return;
+  }
+
+  const scope = scopeFor(organisationId);
+  const rows = await scope.db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.organisationId, organisationId),
+        eq(notifications.id, notificationId),
+      ),
+    )
+    .limit(1);
+  const notification = rows[0];
+  if (!notification) {
+    logger.warn(
+      { jobId: job.id, organisationId },
+      'notification not found — skipping delivery',
+    );
+    return;
+  }
+  if (notification.emailedAt) {
+    // Already delivered; stay idempotent on a retry.
+    return;
+  }
+
+  const userRows = await scope.db
+    .select({ email: users.email, name: users.name })
+    .from(users)
+    .where(eq(users.id, notification.userId))
+    .limit(1);
+  const recipient = userRows[0];
+  if (!recipient) {
+    logger.warn(
+      { jobId: job.id, organisationId },
+      'notification recipient not found — skipping delivery',
+    );
+    return;
+  }
+
+  const { subject, text } = renderNotificationEmail({
+    name: recipient.name,
+    title: notification.title,
+    body: notification.body,
+    appUrl: env.APP_URL,
+  });
+  await sendEmail({ to: recipient.email, subject, text });
+  await markEmailed(organisationId, notificationId);
+
+  logger.info({ jobId: job.id, organisationId, correlationId }, 'notification emailed');
+};
+
+/**
+ * Audit-verify processor. Re-walks the tenant's audit chain and reports any
+ * divergence as a structured error. A clean chain is a NORMAL result and must
+ * not throw (throwing would trigger pointless retries and alarm noise).
+ */
+const auditVerifyProcessor: ProcessorFn = async (job, logger) => {
+  const { organisationId, correlationId } = job.data;
+  const result = await verifyChain(organisationId);
+  if (!result.ok && result.divergence) {
+    // Integrity failure is a serious, actionable signal — log it loudly, but do
+    // not throw: the chain will not "heal" on retry.
+    logger.error(
+      {
+        jobId: job.id,
+        organisationId,
+        correlationId,
+        eventId: result.divergence.eventId,
+        index: result.divergence.index,
+        reason: result.divergence.reason,
+        eventCount: result.eventCount,
+      },
+      'audit chain verification FAILED — divergence detected',
+    );
+    return;
+  }
+  logger.info(
+    { jobId: job.id, organisationId, eventCount: result.eventCount },
+    'audit chain verified clean',
+  );
+};
+
+/**
  * Map of queue name -> processor. The bootstrap creates one BullMQ Worker per
  * entry, so this registry is the single source of truth for what the worker
  * runs. Adding a real processor later is a one-line swap here.
  */
 export const PROCESSORS: Readonly<Record<QueueName, ProcessorFn>> = {
   [QueueName.MalwareScan]: malwareScanProcessor,
-  [QueueName.Email]: stubProcessor(QueueName.Email, 'email delivery not yet implemented'),
-  [QueueName.Notification]: stubProcessor(
-    QueueName.Notification,
-    'notification dispatch not yet implemented',
-  ),
-  [QueueName.AuditVerify]: stubProcessor(
-    QueueName.AuditVerify,
-    'audit verification not yet implemented',
-  ),
+  [QueueName.Email]: emailProcessor,
+  [QueueName.Notification]: notificationProcessor,
+  [QueueName.AuditVerify]: auditVerifyProcessor,
+  // Awaits Phase 7 retention-policy schema — logs context only; never sweeps.
   [QueueName.Retention]: stubProcessor(
     QueueName.Retention,
-    'retention sweep not yet implemented',
+    'retention sweep awaits Phase 7 retention-policy schema',
   ),
+  // Awaits Phase 7 export-record schema — logs context only; never fabricates output.
   [QueueName.Export]: stubProcessor(
     QueueName.Export,
-    'export generation not yet implemented',
+    'export generation awaits Phase 7 export-record schema',
   ),
+  // Awaits Phase 7 webhook-endpoint schema — logs context only; never delivers.
   [QueueName.Webhook]: stubProcessor(
     QueueName.Webhook,
-    'webhook delivery not yet implemented',
+    'webhook delivery awaits Phase 7 webhook-endpoint schema',
   ),
 };
 

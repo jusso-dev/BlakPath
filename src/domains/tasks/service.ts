@@ -1,5 +1,5 @@
 import { asc, eq, isNull, sql } from 'drizzle-orm';
-import { tasks } from '@/db/schema';
+import { tasks, users } from '@/db/schema';
 import { currentScope } from '@/db/tenant-db';
 import { recordAudit } from '@/domains/audit/service';
 import { requireTenantContext } from '@/lib/tenancy/context';
@@ -67,6 +67,30 @@ export async function listTasks(): Promise<TaskRow[]> {
     .from(tasks)
     .where(scope.where(tasks.organisationId, isNull(tasks.deletedAt)))
     .orderBy(asc(tasks.status), asc(tasks.position));
+}
+
+/** A board task enriched with its assignee's display name (for the UI). */
+export interface BoardTaskView extends TaskRow {
+  assigneeName: string | null;
+}
+
+/**
+ * List live tasks with the assignee's display name resolved via a left join, so
+ * the board can show who holds each card without a second round-trip.
+ */
+export async function listBoardTasks(): Promise<BoardTaskView[]> {
+  const ctx = requireTenantContext();
+  requireAny(subjectFromContext(ctx), TASK_READ);
+
+  const scope = currentScope();
+  const rows = await scope.db
+    .select({ task: tasks, assigneeName: users.name })
+    .from(tasks)
+    .leftJoin(users, eq(tasks.assigneeUserId, users.id))
+    .where(scope.where(tasks.organisationId, isNull(tasks.deletedAt)))
+    .orderBy(asc(tasks.status), asc(tasks.position));
+
+  return rows.map((r) => ({ ...r.task, assigneeName: r.assigneeName ?? null }));
 }
 
 /** The next free position at the bottom of a column (max + 1, or 0 if empty). */

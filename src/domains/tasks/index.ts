@@ -30,8 +30,10 @@ export {
   completeTask,
   createTask,
   deleteTask,
+  listBoardTasks,
   listTasks,
   moveTask,
   updateTask,
+  type BoardTaskView,
   type TaskRow,
 } from './service';

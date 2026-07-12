@@ -11,6 +11,7 @@ import { requirePermission, subjectFromContext } from '@/lib/permissions/check';
 import { AuthorizationError } from '@/lib/permissions/errors';
 import { addJob, QueueName } from '@/lib/queues';
 import { logger } from '@/lib/observability/logger';
+import { queueNotification } from '@/domains/notifications';
 import {
   deleteObject,
   EVIDENCE_BUCKET,
@@ -468,6 +469,30 @@ export async function processEvidenceScan(input: ProcessScanInput): Promise<void
       result: 'failure',
       reason: verdict.signature ?? 'malware detected',
     });
+
+    // Let the uploader know, calmly and without file details. Best-effort: a
+    // notification failure must never change the fail-secure scan outcome.
+    if (row.uploadedByUserId) {
+      try {
+        await queueNotification(
+          {
+            organisationId,
+            userId: row.uploadedByUserId,
+            type: 'evidence.infected',
+            title: 'An upload could not be accepted',
+            body: 'One of your uploads did not pass our safety checks and was not stored. Please try uploading a different copy of the file.',
+            resourceType: 'evidence',
+            resourceId: evidenceId,
+          },
+          correlationId,
+        );
+      } catch (err) {
+        logger.error(
+          { organisationId, evidenceId, err },
+          'failed to queue infected-evidence notification',
+        );
+      }
+    }
     return;
   }
 
