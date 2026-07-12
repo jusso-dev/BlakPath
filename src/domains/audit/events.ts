@@ -90,6 +90,9 @@ export type AuditAction =
   | 'evidence.deleted'
   | 'evidence.quarantined'
   | 'evidence.restored'
+  // API keys (public REST API credentials).
+  | 'api_key.created'
+  | 'api_key.revoked'
   // Custom forms & tokenised responses.
   | 'form.created'
   | 'form.updated'
@@ -245,6 +248,7 @@ export type ResourceType =
   | 'workflow'
   | 'assignment'
   | 'task'
+  | 'api_key'
   | 'form'
   | 'form_invitation'
   | 'form_response'
