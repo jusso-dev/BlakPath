@@ -179,6 +179,14 @@ export const certificateStatus = pgEnum('certificate_status', [
   'revoked',
 ]);
 
+/** Lifecycle of an export request. */
+export const exportStatus = pgEnum('export_status', [
+  'pending',
+  'processing',
+  'ready',
+  'failed',
+]);
+
 /** Delivery state of a single webhook dispatch. */
 export const webhookDeliveryStatus = pgEnum('webhook_delivery_status', [
   'pending',

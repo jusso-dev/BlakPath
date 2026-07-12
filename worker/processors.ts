@@ -4,6 +4,7 @@ import type { Logger } from 'pino';
 import { QueueName, type TenantJob } from '@/lib/queues';
 import { processEvidenceScan } from '@/domains/evidence';
 import { processWebhookDelivery } from '@/domains/webhooks';
+import { processExport } from '@/domains/reporting';
 import { env } from '@/lib/env';
 import { scopeFor } from '@/db/tenant-db';
 import { notifications, users } from '@/db/schema';
@@ -219,6 +220,20 @@ const webhookProcessor: ProcessorFn = async (job, logger) => {
 };
 
 /**
+ * Export processor. Assembles the requested report as CSV, stores it, and marks
+ * the request ready (or failed). A malformed payload is dropped, not retried.
+ */
+const exportProcessor: ProcessorFn = async (job, logger) => {
+  const { organisationId, correlationId } = job.data;
+  const exportRequestId = (job.data as { exportRequestId?: unknown }).exportRequestId;
+  if (typeof exportRequestId !== 'string' || exportRequestId.length === 0) {
+    logger.error({ jobId: job.id }, 'export job missing exportRequestId — dropping');
+    return;
+  }
+  await processExport({ organisationId, correlationId, exportRequestId });
+};
+
+/**
  * Map of queue name -> processor. The bootstrap creates one BullMQ Worker per
  * entry, so this registry is the single source of truth for what the worker
  * runs. Adding a real processor later is a one-line swap here.
@@ -233,11 +248,7 @@ export const PROCESSORS: Readonly<Record<QueueName, ProcessorFn>> = {
     QueueName.Retention,
     'retention sweep awaits Phase 7 retention-policy schema',
   ),
-  // Awaits Phase 7 export-record schema — logs context only; never fabricates output.
-  [QueueName.Export]: stubProcessor(
-    QueueName.Export,
-    'export generation awaits Phase 7 export-record schema',
-  ),
+  [QueueName.Export]: exportProcessor,
   [QueueName.Webhook]: webhookProcessor,
 };
 

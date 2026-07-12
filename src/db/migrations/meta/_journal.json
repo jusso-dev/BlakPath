@@ -78,6 +78,13 @@
       "when": 1783854619958,
       "tag": "0010_amazing_micromax",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1783854982257,
+      "tag": "0011_aspiring_joystick",
+      "breakpoints": true
     }
   ]
 }
