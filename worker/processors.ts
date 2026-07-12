@@ -5,6 +5,7 @@ import { QueueName, type TenantJob } from '@/lib/queues';
 import { processEvidenceScan } from '@/domains/evidence';
 import { processWebhookDelivery } from '@/domains/webhooks';
 import { processExport } from '@/domains/reporting';
+import { processRetentionSweep } from '@/domains/retention';
 import { env } from '@/lib/env';
 import { scopeFor } from '@/db/tenant-db';
 import { notifications, users } from '@/db/schema';
@@ -37,29 +38,6 @@ import { verifyChain } from '@/domains/audit';
 
 /** A single job processor. Receives the BullMQ job and a scoped logger. */
 export type ProcessorFn = (job: Job<TenantJob>, logger: Logger) => Promise<void>;
-
-/**
- * Build a phase-1 stub processor that logs and acknowledges. It deliberately
- * does no domain work; it exists so queues are wired, observable and drain
- * cleanly before the real processors land. It never contains identity logic and
- * never opens a fail-open path.
- */
-function stubProcessor(queue: QueueName, note: string): ProcessorFn {
-  return async (job, logger) => {
-    logger.info(
-      {
-        queue,
-        jobId: job.id,
-        jobName: job.name,
-        organisationId: job.data.organisationId,
-        correlationId: job.data.correlationId,
-        attemptsMade: job.attemptsMade,
-      },
-      `[stub] ${queue}: ${note}`,
-    );
-    // ACK by resolving. No side effects, no identity logic, no fail-open paths.
-  };
-}
 
 /**
  * Real malware-scan processor. Validates the tenant-bound job payload, then runs
@@ -234,6 +212,15 @@ const exportProcessor: ProcessorFn = async (job, logger) => {
 };
 
 /**
+ * Retention processor. Runs the tenant's retention sweep (purge/anonymise past
+ * retention, respecting legal holds). Tenant-bound; enqueued by a scheduler.
+ */
+const retentionProcessor: ProcessorFn = async (job) => {
+  const { organisationId, correlationId } = job.data;
+  await processRetentionSweep({ organisationId, correlationId });
+};
+
+/**
  * Map of queue name -> processor. The bootstrap creates one BullMQ Worker per
  * entry, so this registry is the single source of truth for what the worker
  * runs. Adding a real processor later is a one-line swap here.
@@ -243,11 +230,7 @@ export const PROCESSORS: Readonly<Record<QueueName, ProcessorFn>> = {
   [QueueName.Email]: emailProcessor,
   [QueueName.Notification]: notificationProcessor,
   [QueueName.AuditVerify]: auditVerifyProcessor,
-  // Awaits Phase 7 retention-policy schema — logs context only; never sweeps.
-  [QueueName.Retention]: stubProcessor(
-    QueueName.Retention,
-    'retention sweep awaits Phase 7 retention-policy schema',
-  ),
+  [QueueName.Retention]: retentionProcessor,
   [QueueName.Export]: exportProcessor,
   [QueueName.Webhook]: webhookProcessor,
 };

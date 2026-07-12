@@ -22,6 +22,7 @@ export * from './forms';
 export * from './api-keys';
 export * from './webhooks';
 export * from './exports';
+export * from './retention';
 export * from './notifications';
 export * from './preferences';
 export * from './audit';

@@ -179,6 +179,9 @@ export const certificateStatus = pgEnum('certificate_status', [
   'revoked',
 ]);
 
+/** What a retention policy does to a record once it is past its retention period. */
+export const retentionAction = pgEnum('retention_action', ['purge', 'anonymise']);
+
 /** Lifecycle of an export request. */
 export const exportStatus = pgEnum('export_status', [
   'pending',
