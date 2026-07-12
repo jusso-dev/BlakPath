@@ -3,6 +3,7 @@ import type { Job } from 'bullmq';
 import type { Logger } from 'pino';
 import { QueueName, type TenantJob } from '@/lib/queues';
 import { processEvidenceScan } from '@/domains/evidence';
+import { processWebhookDelivery } from '@/domains/webhooks';
 import { env } from '@/lib/env';
 import { scopeFor } from '@/db/tenant-db';
 import { notifications, users } from '@/db/schema';
@@ -204,6 +205,20 @@ const auditVerifyProcessor: ProcessorFn = async (job, logger) => {
 };
 
 /**
+ * Webhook delivery processor. Signs and POSTs the payload; a failed delivery
+ * throws so BullMQ retries with backoff, until the delivery is marked failed.
+ */
+const webhookProcessor: ProcessorFn = async (job, logger) => {
+  const { organisationId, correlationId } = job.data;
+  const deliveryId = (job.data as { deliveryId?: unknown }).deliveryId;
+  if (typeof deliveryId !== 'string' || deliveryId.length === 0) {
+    logger.error({ jobId: job.id }, 'webhook job missing deliveryId — dropping');
+    return;
+  }
+  await processWebhookDelivery({ organisationId, correlationId, deliveryId });
+};
+
+/**
  * Map of queue name -> processor. The bootstrap creates one BullMQ Worker per
  * entry, so this registry is the single source of truth for what the worker
  * runs. Adding a real processor later is a one-line swap here.
@@ -223,11 +238,7 @@ export const PROCESSORS: Readonly<Record<QueueName, ProcessorFn>> = {
     QueueName.Export,
     'export generation awaits Phase 7 export-record schema',
   ),
-  // Awaits Phase 7 webhook-endpoint schema — logs context only; never delivers.
-  [QueueName.Webhook]: stubProcessor(
-    QueueName.Webhook,
-    'webhook delivery awaits Phase 7 webhook-endpoint schema',
-  ),
+  [QueueName.Webhook]: webhookProcessor,
 };
 
 /** All registered queue names, for iteration during worker bootstrap. */

@@ -13,6 +13,7 @@ import {
 import { currentScope } from '@/db/tenant-db';
 import { recordAudit } from '@/domains/audit/service';
 import { getApplication } from '@/domains/applications';
+import { emitWebhookEventSafe } from '@/domains/webhooks';
 import { requireTenantContext } from '@/lib/tenancy/context';
 import {
   requireAny,
@@ -240,6 +241,17 @@ export async function signCertificate(id: string): Promise<CertificateRow> {
     result: 'success',
     before: { data: { status: 'draft' }, allow: ['status'] },
     after: { data: { status: 'signed' }, allow: ['status'] },
+  });
+
+  await emitWebhookEventSafe({
+    organisationId: ctx.organisationId,
+    event: 'certificate.signed',
+    payload: {
+      certificateId: id,
+      reference: row.reference,
+      applicationId: row.applicationId,
+    },
+    correlationId: ctx.correlationId,
   });
   return row;
 }

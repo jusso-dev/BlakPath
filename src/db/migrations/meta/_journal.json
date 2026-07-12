@@ -71,6 +71,13 @@
       "when": 1783851354584,
       "tag": "0009_white_rhodey",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1783854619958,
+      "tag": "0010_amazing_micromax",
+      "breakpoints": true
     }
   ]
 }

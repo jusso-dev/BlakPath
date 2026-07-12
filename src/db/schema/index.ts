@@ -20,6 +20,7 @@ export * from './certificates';
 export * from './tasks';
 export * from './forms';
 export * from './api-keys';
+export * from './webhooks';
 export * from './notifications';
 export * from './preferences';
 export * from './audit';

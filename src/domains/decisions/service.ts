@@ -10,6 +10,7 @@ import {
   subjectFromContext,
 } from '@/lib/permissions/check';
 import { AuthorizationError } from '@/lib/permissions/errors';
+import { emitWebhookEventSafe } from '@/domains/webhooks';
 import {
   castVoteSchema,
   finaliseDecisionSchema,
@@ -263,6 +264,18 @@ export async function finaliseDecision(
     result: 'success',
     reason: input.note ?? null,
     after: { data: { outcome: input.outcome }, allow: ['outcome'] },
+  });
+
+  // Notify subscribed webhook endpoints (best-effort; never fails the decision).
+  await emitWebhookEventSafe({
+    organisationId: ctx.organisationId,
+    event: 'decision.finalised',
+    payload: {
+      decisionId,
+      applicationId: decision.applicationId,
+      outcome: input.outcome,
+    },
+    correlationId: ctx.correlationId,
   });
 
   return row;
