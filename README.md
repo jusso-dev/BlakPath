@@ -11,7 +11,40 @@ strict tenant isolation and Australian data residency.
 
 ## Interface preview
 
+The screenshots below show the public entry point plus the authenticated staff
+workflow using seeded demo data.
+
+### Public entry
+
 ![BlakPath landing page](docs/screenshots/landing-page.png)
+
+### Sign in
+
+![BlakPath sign in page](docs/screenshots/sign-in.png)
+
+### Choose organisation
+
+![BlakPath organisation picker](docs/screenshots/organisation-picker.png)
+
+### Dashboard
+
+![BlakPath dashboard](docs/screenshots/dashboard.png)
+
+### Work board
+
+![BlakPath work board](docs/screenshots/work-board.png)
+
+### Forms
+
+![BlakPath forms](docs/screenshots/forms.png)
+
+### Committee meetings
+
+![BlakPath committee meetings](docs/screenshots/meetings.png)
+
+### Account security
+
+![BlakPath account security](docs/screenshots/account-security.png)
 
 ## The one rule everything else serves
 
