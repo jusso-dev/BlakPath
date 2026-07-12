@@ -3,7 +3,13 @@ import { and, desc, eq, isNull } from 'drizzle-orm';
 import { customAlphabet } from 'nanoid';
 import { uuidv7 } from 'uuidv7';
 import { db } from '@/db/client';
-import { applications, certificates, decisions, organisations } from '@/db/schema';
+import {
+  applications,
+  certificates,
+  decisions,
+  organisations,
+  organisationSettings,
+} from '@/db/schema';
 import { currentScope } from '@/db/tenant-db';
 import { recordAudit } from '@/domains/audit/service';
 import { getApplication } from '@/domains/applications';
@@ -142,6 +148,15 @@ export async function generateCertificate(
     .limit(1);
   const org = must(orgRows[0], 'organisation');
 
+  // Optional brand colour for the certificate heading (organisation-authored).
+  const settingsRows = await scope.db
+    .select({ branding: organisationSettings.branding })
+    .from(organisationSettings)
+    .where(eq(organisationSettings.organisationId, scope.organisationId))
+    .limit(1);
+  const brandColor =
+    (settingsRows[0]?.branding as { primaryColor?: string } | null)?.primaryColor ?? null;
+
   const id = uuidv7();
   const now = new Date();
   const reference = makeCertificateReference(id, now.getUTCFullYear());
@@ -155,6 +170,7 @@ export async function generateCertificate(
     verificationCode,
     issuedOn: now.toISOString().slice(0, 10),
     verifyUrl: `${env.APP_URL}/verify/${verificationCode}`,
+    brandColor,
   });
   await putObjectBytes({
     bucket: EVIDENCE_BUCKET,
