@@ -1,0 +1,42 @@
+/**
+ * Decisions domain (Phase 5).
+ *
+ *   - `tally`   — pure status + vote-counting (advisory only; never decides).
+ *   - `schemas` — zod v4 input validation.
+ *   - `service` — tenant-scoped, permission-checked, audited path with conflict
+ *     guards; finalising drives the application to `decided`.
+ */
+export {
+  DECISION_OUTCOMES,
+  DECISION_STATUSES,
+  VOTE_CHOICES,
+  canFinalise,
+  canVote,
+  canWithdraw,
+  indicativeResult,
+  tallyVotes,
+  type DecisionOutcome,
+  type DecisionStatus,
+  type VoteChoice,
+  type VoteTally,
+} from './tally';
+
+export {
+  castVoteSchema,
+  finaliseDecisionSchema,
+  proposeDecisionSchema,
+  type CastVoteInput,
+  type FinaliseDecisionInput,
+  type ProposeDecisionInput,
+} from './schemas';
+
+export {
+  castVote,
+  finaliseDecision,
+  getDecisionWithVotes,
+  listDecisions,
+  proposeDecision,
+  withdrawVote,
+  type DecisionRow,
+  type DecisionVoteRow,
+} from './service';

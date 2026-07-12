@@ -1,0 +1,145 @@
+# BlakPath — PRODUCTION example compose (reference, not turn-key).
+#
+# This file documents how the production images are run. Copy it, review every
+# line, and adapt to your orchestrator (ECS, Nomad, k8s) and secret manager.
+#
+# Data residency: ALL infrastructure must live in ap-southeast-2 (Australia).
+#
+# Managed dependencies: in production, Postgres, Redis and object storage are
+# MANAGED services (RDS/Aurora, ElastiCache, S3), NOT containers. They are
+# referenced purely via environment/secrets — there are no postgres/redis/minio
+# services here.
+#
+# Secrets: never bake secrets into images or commit them. Inject via your secret
+# manager (AWS Secrets Manager / SSM) at deploy time. `env_file` below points at
+# a runtime-materialised file that your platform populates from the secret store
+# — it must NOT be committed.
+#
+# Fail-secure rule (encoded operationally): evidence MUST NOT be released from
+# the quarantine bucket if ClamAV is unavailable or a scan has not passed. The
+# worker enforces this in code; do not add any bypass here or in ops runbooks.
+
+name: blakpath-prod
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '5'
+
+x-restart: &default-restart
+  restart: unless-stopped
+
+services:
+  # --- Web (Next.js standalone) --------------------------------------------
+  web:
+    image: ${WEB_IMAGE:-ghcr.io/your-org/blakpath:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runner
+    <<: *default-restart
+    env_file:
+      # Runtime-materialised from your secret manager. NOT committed.
+      - .env.production
+    environment:
+      NODE_ENV: production
+      APP_REGION: ap-southeast-2
+      PORT: '3000'
+    ports:
+      - '3000:3000'
+    # Harden the runtime: immutable root filesystem, writable scratch only.
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/.next/cache
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    stop_grace_period: 30s
+    logging: *default-logging
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 1G
+        reservations:
+          cpus: '0.5'
+          memory: 512M
+
+  # --- Background worker (BullMQ) ------------------------------------------
+  worker:
+    image: ${WORKER_IMAGE:-ghcr.io/your-org/blakpath-worker:latest}
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: worker
+    <<: *default-restart
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      APP_REGION: ap-southeast-2
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    # SIGTERM triggers a graceful drain of in-flight jobs before exit; the
+    # worker enforces a hard deadline internally. Give it room to finish.
+    stop_grace_period: 40s
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f "worker/index.ts" > /dev/null || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    deploy:
+      replicas: 2
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+
+  # --- Observability collector (optional) ----------------------------------
+  # Sidecar that fans out OTLP to your managed backend (in-region). Remove if
+  # your platform runs a shared collector instead.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    profiles: ['observability']
+    <<: *default-restart
+    command: ['--config=/etc/otel/config.yaml']
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    expose:
+      - '4317'
+      - '4318'
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+# NOTE: no named volumes. Persistent state (DB, object storage) lives in managed
+# services. Container filesystems are read-only + tmpfs — nothing durable is
+# stored on the nodes. See docker/README.md for backup pointers.

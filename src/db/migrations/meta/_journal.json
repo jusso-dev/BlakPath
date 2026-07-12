@@ -1,0 +1,55 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1783829957366,
+      "tag": "0000_square_speed",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1783835255220,
+      "tag": "0001_sad_the_phantom",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783836672178,
+      "tag": "0002_smiling_wallow",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1783838503922,
+      "tag": "0003_ordinary_betty_brant",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1783839303780,
+      "tag": "0004_lovely_vargas",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1783839485300,
+      "tag": "0005_romantic_ultron",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1783840467474,
+      "tag": "0006_aromatic_squadron_sinister",
+      "breakpoints": true
+    }
+  ]
+}

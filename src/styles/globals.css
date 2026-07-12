@@ -1,0 +1,231 @@
+@import 'tailwindcss';
+
+/**
+ * BlakPath design system tokens.
+ *
+ * Direction: calm, warm, grounded, human, community-oriented. The palette
+ * leans on charcoal, warm off-white, ochre, desert gold, a deep-red accent and
+ * muted eucalyptus/earth neutrals. No sacred/ceremonial motifs and no
+ * pseudo-Indigenous patterning — hierarchy comes from typography, spacing,
+ * geometry and warm colour.
+ *
+ * Accessibility intent (WCAG 2.2 AA):
+ *  - All semantic foreground/background pairs meet at least 4.5:1 for body text
+ *    and 3:1 for large text and UI components.
+ *  - Status is NEVER communicated by colour alone (see Badge/Alert — they pair
+ *    colour with an icon and text).
+ *  - A visible, high-contrast focus ring is provided via :focus-visible.
+ *  - prefers-reduced-motion and prefers-contrast (more) are honoured.
+ */
+
+@theme {
+  /* --- Raw palette (earth + warmth) ------------------------------------ */
+  --color-charcoal: #24211d;
+  --color-charcoal-soft: #3a352e;
+  --color-off-white: #f7f2ea;
+  --color-off-white-warm: #efe7db;
+
+  --color-ochre: #b45f26;
+  --color-ochre-deep: #8f4718;
+  --color-ochre-soft: #d98a4f;
+
+  --color-desert-gold: #c9992e;
+  --color-desert-gold-deep: #9c740f;
+
+  --color-deep-red: #9c2b21;
+  --color-deep-red-soft: #c0463a;
+
+  --color-eucalyptus: #5c6b57;
+  --color-eucalyptus-deep: #3f4a3b;
+  --color-earth: #7a6c58;
+  --color-earth-soft: #a1927c;
+
+  --color-success: #3f6b47;
+  --color-success-soft: #5c8a63;
+  --color-warning: #9c740f;
+  --color-info: #3f5c6b;
+
+  /* --- Semantic tokens ------------------------------------------------- */
+  --color-background: var(--color-off-white);
+  --color-surface: #fffdf9;
+  --color-surface-muted: var(--color-off-white-warm);
+  --color-foreground: var(--color-charcoal);
+  --color-foreground-muted: #5b5347;
+
+  --color-primary: var(--color-ochre);
+  --color-primary-hover: var(--color-ochre-deep);
+  --color-primary-foreground: #fffdf9;
+
+  --color-secondary: var(--color-surface-muted);
+  --color-secondary-foreground: var(--color-charcoal);
+
+  --color-accent: var(--color-desert-gold);
+  --color-accent-foreground: var(--color-charcoal);
+
+  --color-destructive: var(--color-deep-red);
+  --color-destructive-hover: #7e2119;
+  --color-destructive-foreground: #fffdf9;
+
+  --color-muted: var(--color-surface-muted);
+  --color-muted-foreground: var(--color-foreground-muted);
+
+  --color-border: #d9cebc;
+  --color-border-strong: #b9ab93;
+  --color-input: #d9cebc;
+  --color-ring: var(--color-ochre-deep);
+
+  /* Status accents (always paired with icon + text in components). */
+  --color-status-success: var(--color-success);
+  --color-status-success-surface: #e6efe4;
+  --color-status-warning: var(--color-warning);
+  --color-status-warning-surface: #f6ecd2;
+  --color-status-destructive: var(--color-deep-red);
+  --color-status-destructive-surface: #f6e2df;
+  --color-status-info: var(--color-info);
+  --color-status-info-surface: #e2ecef;
+  --color-status-neutral: var(--color-earth);
+  --color-status-neutral-surface: var(--color-off-white-warm);
+
+  /* --- Radius ---------------------------------------------------------- */
+  --radius-sm: 0.25rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-2xl: 1.5rem;
+
+  /* --- Typography ------------------------------------------------------ */
+  --font-sans:
+    ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+    sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji';
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --text-5xl: 3rem;
+
+  /* --- Shadows (soft, grounded) --------------------------------------- */
+  --shadow-sm: 0 1px 2px 0 rgb(36 33 29 / 0.06);
+  --shadow-md: 0 4px 12px -2px rgb(36 33 29 / 0.1);
+  --shadow-lg: 0 12px 28px -6px rgb(36 33 29 / 0.14);
+}
+
+/* --- Base element styling ---------------------------------------------- */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    line-height: 1.25;
+    text-wrap: balance;
+    font-weight: 600;
+    color: var(--color-foreground);
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+
+  /* A single, consistent, high-contrast focus indicator for keyboard users.
+     Never removed — only styled. */
+  :focus-visible {
+    outline: 3px solid var(--color-ring);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  /* Ensure images/media never overflow their containers on small screens. */
+  img,
+  svg,
+  video {
+    max-width: 100%;
+    height: auto;
+  }
+}
+
+/* --- Utility: visually hidden but available to assistive tech ---------- */
+@utility sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
+/* Skip link: hidden until focused, then pinned to the top-left. */
+@utility skip-link {
+  position: absolute;
+  left: 0.75rem;
+  top: -3rem;
+  z-index: 100;
+  border-radius: var(--radius-md);
+  background-color: var(--color-charcoal);
+  color: var(--color-off-white);
+  padding: 0.625rem 1rem;
+  font-weight: 600;
+  transition: top 150ms ease;
+}
+.skip-link:focus {
+  top: 0.75rem;
+}
+
+/* --- prefers-contrast: strengthen borders and remove low-contrast tints */
+@media (prefers-contrast: more) {
+  :root {
+    --color-foreground-muted: #3a352e;
+    --color-muted-foreground: #3a352e;
+    --color-border: #6b6152;
+    --color-border-strong: #484136;
+    --color-ring: #24211d;
+  }
+
+  :focus-visible {
+    outline-width: 4px;
+  }
+
+  * {
+    border-color: var(--color-border);
+  }
+}
+
+/* --- prefers-reduced-motion: disable non-essential motion -------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

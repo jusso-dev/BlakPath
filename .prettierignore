@@ -1,0 +1,15 @@
+# Generated / vendored artefacts — never hand-formatted, and rewritten by
+# tooling (pnpm install, drizzle-kit, next build). Keeping them out of Prettier
+# stops `format:check` failing in CI whenever they are regenerated.
+pnpm-lock.yaml
+node_modules/
+.next/
+next-env.d.ts
+tsconfig.tsbuildinfo
+
+# Drizzle-generated migrations and snapshots.
+src/db/migrations/
+
+# Coverage / build outputs.
+coverage/
+dist/

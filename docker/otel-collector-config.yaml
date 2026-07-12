@@ -1,0 +1,69 @@
+# Minimal OpenTelemetry Collector configuration for BlakPath.
+#
+# Receives OTLP (gRPC + HTTP) from the web and worker, batches, and exports.
+# Locally this just logs to stdout via the debug exporter. In production, point
+# the exporter at your managed observability backend (still within
+# ap-southeast-2 for data residency) — replace the `debug` exporter accordingly.
+#
+# Privacy note: traces/metrics must NOT carry applicant PII or evidence content.
+# Attribute scrubbing is enforced at the SDK level in the app; this collector is
+# a transport, not a store of record.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 5s
+    send_batch_size: 1024
+  memory_limiter:
+    check_interval: 1s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  # Defence in depth: drop attributes that could carry sensitive identifiers if
+  # the app ever leaks one. These are best-effort; the app must not emit PII.
+  attributes/scrub:
+    actions:
+      - key: applicant.name
+        action: delete
+      - key: applicant.dob
+        action: delete
+      - key: evidence.content
+        action: delete
+
+exporters:
+  debug:
+    verbosity: normal
+  # Example production exporter (disabled locally):
+  # otlphttp/backend:
+  #   endpoint: https://otel.internal.ap-southeast-2.example
+  #   headers:
+  #     authorization: ${env:OTEL_EXPORTER_TOKEN}
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, batch]
+      exporters: [debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, attributes/scrub, batch]
+      exporters: [debug]
+  telemetry:
+    logs:
+      level: info

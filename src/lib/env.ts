@@ -1,0 +1,98 @@
+import { z } from 'zod';
+
+/**
+ * Centralised, validated environment configuration.
+ *
+ * Fail fast: the process must not boot with a partial or malformed
+ * configuration. Secrets are never logged. Import `env` everywhere instead
+ * of reading `process.env` directly so that every value is typed and checked.
+ */
+/**
+ * Parse a string flag into a boolean. Zod v4 requires the `.default()` to sit
+ * before `.transform()` so the default is a valid *input* to the enum.
+ */
+const booleanish = (defaultValue: 'true' | 'false') =>
+  z
+    .enum(['true', 'false', '1', '0'])
+    .default(defaultValue)
+    .transform((v) => v === 'true' || v === '1');
+
+const serverSchema = z.object({
+  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+  APP_URL: z.string().url().default('http://localhost:3000'),
+  APP_REGION: z.string().default('ap-southeast-2'),
+
+  // Database
+  DATABASE_URL: z.string().url(),
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(10),
+
+  // Redis (queues, rate limiting, ephemeral state)
+  REDIS_URL: z.string().url(),
+
+  // Better Auth
+  BETTER_AUTH_SECRET: z.string().min(32, 'BETTER_AUTH_SECRET must be >= 32 chars'),
+  BETTER_AUTH_URL: z.string().url().default('http://localhost:3000'),
+
+  // Application-level envelope encryption. Master key is a base64-encoded
+  // 32-byte key. In production this is sourced from KMS, never the DB.
+  ENCRYPTION_MASTER_KEY: z
+    .string()
+    .min(44, 'ENCRYPTION_MASTER_KEY must be a base64-encoded 32-byte key'),
+  ENCRYPTION_KEY_VERSION: z.coerce.number().int().positive().default(1),
+
+  // S3-compatible object storage
+  S3_ENDPOINT: z.string().url().optional(),
+  S3_REGION: z.string().default('ap-southeast-2'),
+  S3_ACCESS_KEY_ID: z.string(),
+  S3_SECRET_ACCESS_KEY: z.string(),
+  S3_BUCKET_EVIDENCE: z.string().default('blakpath-evidence'),
+  S3_BUCKET_QUARANTINE: z.string().default('blakpath-quarantine'),
+  S3_FORCE_PATH_STYLE: booleanish('true'),
+
+  // ClamAV
+  CLAMAV_HOST: z.string().default('localhost'),
+  CLAMAV_PORT: z.coerce.number().int().positive().default(3310),
+
+  // Email (SMTP; Mailpit locally)
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().positive().default(1025),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.string().default('BlakPath <no-reply@blakpath.local>'),
+
+  // Observability
+  OTEL_EXPORTER_OTLP_ENDPOINT: z.string().url().optional(),
+  OTEL_SERVICE_NAME: z.string().default('blakpath'),
+  LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+
+  // Feature toggles
+  AI_FEATURES_ENABLED: booleanish('false'),
+});
+
+export type ServerEnv = z.infer<typeof serverSchema>;
+
+function loadEnv(): ServerEnv {
+  const parsed = serverSchema.safeParse(process.env);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
+      .join('\n');
+    // Do not print values — only the keys that failed validation.
+    throw new Error(`Invalid environment configuration:\n${issues}`);
+  }
+  return parsed.data;
+}
+
+/**
+ * Lazily-evaluated so that tooling (e.g. drizzle-kit) that only needs
+ * DATABASE_URL does not trip over unrelated missing variables.
+ */
+let cached: ServerEnv | null = null;
+export const env: ServerEnv = new Proxy({} as ServerEnv, {
+  get(_t, prop: string) {
+    cached ??= loadEnv();
+    return cached[prop as keyof ServerEnv];
+  },
+});
+
+export const isProduction = () => env.NODE_ENV === 'production';

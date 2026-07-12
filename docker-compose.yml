@@ -1,0 +1,291 @@
+# BlakPath — local development stack.
+#
+# Data residency note: this file is for LOCAL development only. Production runs
+# in ap-southeast-2 against managed Postgres / Redis / S3 (see
+# docker-compose.prod.example.yml). Never point this stack at production data.
+#
+# Usage:
+#   cp .env.example .env   # then fill in secrets
+#   docker compose up -d
+#
+# All service config comes from `.env` (env_file). Secrets are NOT hard-coded
+# here; the few literals below (minio root creds, pg password) are dev-only and
+# must match the values in your .env.
+
+name: blakpath
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '3'
+
+services:
+  # --- Database -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: blakpath
+      POSTGRES_PASSWORD: blakpath
+      POSTGRES_DB: blakpath
+      # Trust only local connections; scram for the rest.
+      POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
+    ports:
+      - '5432:5432'
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U blakpath -d blakpath']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # --- Redis (queues / ephemeral state) ------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ['redis-server', '--save', '', '--appendonly', 'no']
+    ports:
+      - '6379:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+  # --- Object storage (S3-compatible) --------------------------------------
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: ['server', '/data', '--console-address', ':9001']
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID:-blakpath}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-blakpath-dev-secret}
+      MINIO_REGION: ${S3_REGION:-ap-southeast-2}
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # Web console
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+
+  # One-shot: create the evidence + quarantine buckets. Quarantine is where
+  # freshly uploaded evidence lands until a malware scan passes — evidence is
+  # NEVER served from quarantine.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ['/bin/sh', '/init/create-buckets.sh']
+    environment:
+      MC_HOST_local: http://${S3_ACCESS_KEY_ID:-blakpath}:${S3_SECRET_ACCESS_KEY:-blakpath-dev-secret}@minio:9000
+      S3_BUCKET_EVIDENCE: ${S3_BUCKET_EVIDENCE:-blakpath-evidence}
+      S3_BUCKET_QUARANTINE: ${S3_BUCKET_QUARANTINE:-blakpath-quarantine}
+    volumes:
+      - ./docker/minio-init:/init:ro
+    restart: 'no'
+    logging: *default-logging
+
+  # --- Malware scanning -----------------------------------------------------
+  clamav:
+    image: clamav/clamav:latest
+    restart: unless-stopped
+    ports:
+      - '3310:3310'
+    volumes:
+      - clamav_data:/var/lib/clamav
+    healthcheck:
+      # clamdscan --ping waits for clamd to be ready to accept scans.
+      test: ['CMD-SHELL', 'clamdscan --ping 1 || exit 1']
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      # ClamAV downloads signature databases on first boot — allow time.
+      start_period: 180s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.5'
+          memory: 2G
+
+  # --- Email (dev mailbox) --------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # Web UI
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8025/readyz']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 128M
+
+  # --- Database migrations (one-shot, runs before web) ---------------------
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ['pnpm', 'db:migrate']
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://blakpath:blakpath@postgres:5432/blakpath
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    restart: 'no'
+    logging: *default-logging
+
+  # --- Web (Next.js dev server) --------------------------------------------
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ['pnpm', 'dev']
+    env_file:
+      - .env
+    environment:
+      # In-network hostnames override the localhost defaults from .env.
+      DATABASE_URL: postgres://blakpath:blakpath@postgres:5432/blakpath
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      CLAMAV_HOST: clamav
+      SMTP_HOST: mailpit
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
+    ports:
+      - '3000:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://127.0.0.1:3000/api/health']
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 2G
+
+  # --- Background worker (BullMQ) ------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    command: ['pnpm', 'worker:dev']
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://blakpath:blakpath@postgres:5432/blakpath
+      REDIS_URL: redis://redis:6379
+      S3_ENDPOINT: http://minio:9000
+      CLAMAV_HOST: clamav
+      SMTP_HOST: mailpit
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+      clamav:
+        condition: service_healthy
+    volumes:
+      - .:/app
+      - node_modules:/app/node_modules
+    # SIGTERM triggers the worker's graceful drain; give it time.
+    stop_grace_period: 30s
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f "worker/index.ts" > /dev/null || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+
+  # --- Observability (optional) --------------------------------------------
+  # Enable with: docker compose --profile observability up -d
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    profiles: ['observability']
+    restart: unless-stopped
+    command: ['--config=/etc/otel/config.yaml']
+    volumes:
+      - ./docker/otel-collector-config.yaml:/etc/otel/config.yaml:ro
+    ports:
+      - '4317:4317' # OTLP gRPC
+      - '4318:4318' # OTLP HTTP
+    logging: *default-logging
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+
+volumes:
+  pg_data:
+  redis_data:
+  minio_data:
+  clamav_data:
+  # Container-local node_modules so the host bind-mount doesn't shadow the
+  # dependencies installed inside the image.
+  node_modules:
