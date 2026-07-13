@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Activity, CalendarDays, ClipboardList, ListTodo } from 'lucide-react';
 import {
   DndContext,
   KeyboardSensor,
@@ -20,7 +21,11 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import type { AttentionItem, PipelineCounts } from '@/domains/dashboard';
+import type {
+  ApplicationActivityPoint,
+  AttentionItem,
+  PipelineCounts,
+} from '@/domains/dashboard';
 import { cn } from '@/lib/utils';
 
 /**
@@ -110,17 +115,130 @@ function MetricCard({
   label,
   value,
   detail,
+  icon: Icon,
+  tone,
 }: {
   label: string;
   value: number;
   detail: string;
+  icon: typeof ClipboardList;
+  tone: 'primary' | 'info' | 'success' | 'warning';
 }): ReactNode {
+  const toneClass = {
+    primary: 'bg-primary/10 text-primary',
+    info: 'bg-status-info-surface text-status-info',
+    success: 'bg-status-success-surface text-status-success',
+    warning: 'bg-status-warning-surface text-status-warning',
+  }[tone];
   return (
     <Card>
-      <CardContent className="flex min-h-32 flex-col justify-between p-4 sm:p-5">
-        <p className="text-muted-foreground text-sm font-medium">{label}</p>
-        <p className="text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+      <CardContent className="flex min-h-36 flex-col justify-between p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3">
+          <p className="text-muted-foreground text-sm font-medium">{label}</p>
+          <span className={cn('grid size-8 place-items-center rounded-md', toneClass)}>
+            <Icon className="size-4" aria-hidden="true" />
+          </span>
+        </div>
+        <p className="text-4xl font-semibold tracking-tight tabular-nums">{value}</p>
         <p className="text-muted-foreground text-xs">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** A compact SVG chart for the real weekly application-creation series. */
+function ApplicationActivityChart({
+  points,
+}: {
+  points: ApplicationActivityPoint[];
+}): ReactNode {
+  const largest = Math.max(1, ...points.map((point) => point.count));
+  const width = 640;
+  const height = 220;
+  const padding = { top: 18, right: 12, bottom: 38, left: 28 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const coordinates = points.map((point, index) => ({
+    ...point,
+    x: padding.left + (plotWidth * index) / Math.max(1, points.length - 1),
+    y: padding.top + plotHeight - (point.count / largest) * plotHeight,
+  }));
+  const path = coordinates
+    .map((point, index) => `${index === 0 ? 'M' : 'L'} ${point.x} ${point.y}`)
+    .join(' ');
+  const area = `${path} L ${coordinates.at(-1)?.x ?? padding.left} ${padding.top + plotHeight} L ${coordinates[0]?.x ?? padding.left} ${padding.top + plotHeight} Z`;
+  const total = points.reduce((sum, point) => sum + point.count, 0);
+
+  return (
+    <Card>
+      <CardHeader className="flex-row items-start justify-between gap-3 pb-2">
+        <div>
+          <CardTitle className="text-base">New applications</CardTitle>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Weekly activity over the last eight weeks
+          </p>
+        </div>
+        <span className="bg-primary/10 text-primary rounded-full px-2.5 py-1 text-xs font-semibold tabular-nums">
+          {total} total
+        </span>
+      </CardHeader>
+      <CardContent className="pt-2">
+        <div
+          role="img"
+          aria-label={`New applications by week: ${points.map((point) => `${point.label}, ${point.count}`).join('; ')}`}
+          className="h-56"
+        >
+          <svg
+            viewBox={`0 0 ${width} ${height}`}
+            className="size-full"
+            preserveAspectRatio="none"
+          >
+            {[0, 0.5, 1].map((fraction) => {
+              const y = padding.top + plotHeight - fraction * plotHeight;
+              return (
+                <line
+                  key={fraction}
+                  x1={padding.left}
+                  x2={width - padding.right}
+                  y1={y}
+                  y2={y}
+                  className="stroke-border"
+                  strokeDasharray="4 5"
+                />
+              );
+            })}
+            <path d={area} className="fill-primary/10" />
+            <path
+              d={path}
+              fill="none"
+              className="stroke-primary"
+              strokeWidth="3"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            {coordinates.map((point) => (
+              <g key={point.label}>
+                <circle
+                  cx={point.x}
+                  cy={point.y}
+                  r="4"
+                  className="fill-surface stroke-primary"
+                  strokeWidth="3"
+                >
+                  <title>{`${point.label}: ${point.count} new applications`}</title>
+                </circle>
+                <text
+                  x={point.x}
+                  y={height - 12}
+                  textAnchor="middle"
+                  className="fill-muted-foreground text-[11px]"
+                >
+                  {point.label}
+                </text>
+              </g>
+            ))}
+          </svg>
+        </div>
       </CardContent>
     </Card>
   );
@@ -218,9 +336,11 @@ const SEVERITY_CLASS: Record<AttentionItem['severity'], string> = {
 export function StatDashboard({
   counts,
   attention,
+  applicationActivity,
 }: {
   counts: PipelineCounts;
   attention: AttentionItem[];
+  applicationActivity: ApplicationActivityPoint[];
 }): ReactNode {
   const [order, setOrder] = useState<WidgetId[]>([...DEFAULT_ORDER]);
 
@@ -398,23 +518,33 @@ export function StatDashboard({
           label="Applications"
           value={totalApplications}
           detail={`${activeApplications} currently active`}
+          icon={ClipboardList}
+          tone="primary"
         />
         <MetricCard
           label="Needs attention"
           value={attentionTotal}
           detail="Items across active queues"
+          icon={Activity}
+          tone="info"
         />
         <MetricCard
           label="Upcoming meetings"
           value={counts.meetingsUpcoming}
           detail="Scheduled ahead"
+          icon={CalendarDays}
+          tone="success"
         />
         <MetricCard
           label="Overdue tasks"
           value={counts.tasksOverdue}
           detail="Review on the work board"
+          icon={ListTodo}
+          tone="warning"
         />
       </div>
+
+      <ApplicationActivityChart points={applicationActivity} />
 
       <DndContext
         sensors={sensors}

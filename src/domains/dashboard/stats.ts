@@ -56,15 +56,19 @@ function toRecord(
 export async function getOrganisationStats(): Promise<{
   counts: PipelineCounts;
   attention: AttentionItem[];
+  applicationActivity: ApplicationActivityPoint[];
 }> {
   const ctx = requireTenantContext();
   requireAny(subjectFromContext(ctx), DASHBOARD_READ);
 
   const scope = currentScope();
   const now = new Date();
+  const activityStart = new Date(now);
+  activityStart.setDate(activityStart.getDate() - 7 * 7);
 
   const [
     applicationsByStatusRows,
+    applicationActivityRows,
     evidencePendingRows,
     evidenceInfectedRows,
     decisionsPendingRows,
@@ -79,6 +83,16 @@ export async function getOrganisationStats(): Promise<{
       .from(applications)
       .where(scope.where(applications.organisationId, isNull(applications.deletedAt)))
       .groupBy(applications.status),
+    scope.db
+      .select({ createdAt: applications.createdAt })
+      .from(applications)
+      .where(
+        scope.where(
+          applications.organisationId,
+          gt(applications.createdAt, activityStart),
+          isNull(applications.deletedAt),
+        ),
+      ),
     scope.db
       .select({ n: count() })
       .from(evidence)
@@ -173,5 +187,51 @@ export async function getOrganisationStats(): Promise<{
     tasksOverdue: n(tasksOverdueRows[0]?.n),
   };
 
-  return { counts, attention: deriveAttention(counts) };
+  return {
+    counts,
+    attention: deriveAttention(counts),
+    applicationActivity: buildApplicationActivity(
+      applicationActivityRows.map((row) => row.createdAt),
+      now,
+    ),
+  };
+}
+
+/** A display-safe weekly count used by the dashboard's application activity chart. */
+export interface ApplicationActivityPoint {
+  label: string;
+  count: number;
+}
+
+function startOfMonday(date: Date): Date {
+  const result = new Date(date);
+  result.setHours(0, 0, 0, 0);
+  result.setDate(result.getDate() - ((result.getDay() + 6) % 7));
+  return result;
+}
+
+function weekKey(date: Date): string {
+  return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+}
+
+/** Build eight complete weekly buckets, including quiet weeks as zero. */
+function buildApplicationActivity(
+  createdAt: Date[],
+  now: Date,
+): ApplicationActivityPoint[] {
+  const currentWeek = startOfMonday(now);
+  const weeks = Array.from({ length: 8 }, (_, index) => {
+    const week = new Date(currentWeek);
+    week.setDate(currentWeek.getDate() - (7 - index) * 7);
+    return week;
+  });
+  const counts = new Map(weeks.map((week) => [weekKey(week), 0]));
+  for (const created of createdAt) {
+    const key = weekKey(startOfMonday(created));
+    if (counts.has(key)) counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  return weeks.map((week) => ({
+    label: week.toLocaleDateString('en-AU', { day: 'numeric', month: 'short' }),
+    count: counts.get(weekKey(week)) ?? 0,
+  }));
 }

@@ -9,6 +9,6 @@
  */
 export { deriveAttention, type AttentionItem, type PipelineCounts } from './attention';
 
-export { getOrganisationStats } from './stats';
+export { getOrganisationStats, type ApplicationActivityPoint } from './stats';
 
 export { getDashboardLayout, saveDashboardLayout } from './layout';

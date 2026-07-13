@@ -1,7 +1,11 @@
 import { StatDashboard } from '@/components/dashboard/stat-dashboard';
 import { withRequestTenant } from '@/lib/http/tenant-route';
 import { getOrganisationStats } from '@/domains/dashboard';
-import type { AttentionItem, PipelineCounts } from '@/domains/dashboard';
+import type {
+  ApplicationActivityPoint,
+  AttentionItem,
+  PipelineCounts,
+} from '@/domains/dashboard';
 
 /**
  * Organisation stats dashboard (RSC).
@@ -12,7 +16,11 @@ import type { AttentionItem, PipelineCounts } from '@/domains/dashboard';
  * shown instead of an error.
  */
 export default async function DashboardPage() {
-  let data: { counts: PipelineCounts; attention: AttentionItem[] } | null = null;
+  let data: {
+    counts: PipelineCounts;
+    attention: AttentionItem[];
+    applicationActivity: ApplicationActivityPoint[];
+  } | null = null;
   let error: string | null = null;
 
   try {
@@ -27,7 +35,11 @@ export default async function DashboardPage() {
       {error || !data ? (
         <p className="text-muted-foreground">{error}</p>
       ) : (
-        <StatDashboard counts={data.counts} attention={data.attention} />
+        <StatDashboard
+          counts={data.counts}
+          attention={data.attention}
+          applicationActivity={data.applicationActivity}
+        />
       )}
     </div>
   );
