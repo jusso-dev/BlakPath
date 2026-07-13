@@ -33,7 +33,7 @@ services:
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
       POSTGRES_INITDB_ARGS: '--auth-host=scram-sha-256'
     ports:
-      - '5432:5432'
+      - '${BLAKPATH_POSTGRES_PORT:-5432}:5432'
     volumes:
       - pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -55,7 +55,7 @@ services:
     restart: unless-stopped
     command: ['redis-server', '--save', '', '--appendonly', 'no']
     ports:
-      - '6379:6379'
+      - '${BLAKPATH_REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -81,8 +81,8 @@ services:
       MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY:-blakpath-dev-secret}
       MINIO_REGION: ${S3_REGION:-ap-southeast-2}
     ports:
-      - '9000:9000' # S3 API
-      - '9001:9001' # Web console
+      - '${BLAKPATH_MINIO_PORT:-9000}:9000' # S3 API
+      - '${BLAKPATH_MINIO_CONSOLE_PORT:-9001}:9001' # Web console
     volumes:
       - minio_data:/data
     healthcheck:
@@ -119,9 +119,12 @@ services:
   # --- Malware scanning -----------------------------------------------------
   clamav:
     image: clamav/clamav:latest
+    # The upstream image currently publishes amd64 only. Docker Desktop can
+    # emulate it on Apple Silicon for this local-development stack.
+    platform: linux/amd64
     restart: unless-stopped
     ports:
-      - '3310:3310'
+      - '${BLAKPATH_CLAMAV_PORT:-3310}:3310'
     volumes:
       - clamav_data:/var/lib/clamav
     healthcheck:
@@ -144,8 +147,8 @@ services:
     image: axllent/mailpit:latest
     restart: unless-stopped
     ports:
-      - '1025:1025' # SMTP
-      - '8025:8025' # Web UI
+      - '${BLAKPATH_SMTP_PORT:-1025}:1025' # SMTP
+      - '${BLAKPATH_MAILPIT_UI_PORT:-8025}:8025' # Web UI
     healthcheck:
       test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:8025/readyz']
       interval: 15s
@@ -195,7 +198,7 @@ services:
       SMTP_HOST: mailpit
       OTEL_EXPORTER_OTLP_ENDPOINT: http://otel-collector:4318
     ports:
-      - '3000:3000'
+      - '${BLAKPATH_WEB_PORT:-3000}:3000'
     depends_on:
       postgres:
         condition: service_healthy

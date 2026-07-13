@@ -9,6 +9,9 @@ import {
 } from './helpers/auth';
 
 async function expectNoSeriousAccessibilityViolations(page: Page): Promise<void> {
+  // App Router metadata can stream after the page's visible content on a slow
+  // CI runner. Wait for the title before asking axe to inspect the final DOM.
+  await expect(page).toHaveTitle(/\S/);
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => {
     interface AxeResult {

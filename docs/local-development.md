@@ -113,6 +113,7 @@ or email, keep it running.
 | `pnpm format` / `pnpm format:check`                    | Prettier                                    |
 | `pnpm test` / `pnpm test:watch`                        | Vitest unit + integration                   |
 | `pnpm test:e2e`                                        | Playwright e2e                              |
+| `pnpm test:live`                                       | Disposable full-service Playwright drill    |
 | `pnpm db:migrate` / `pnpm db:seed`                     | Migrate / seed                              |
 | `pnpm db:generate` / `pnpm db:push` / `pnpm db:studio` | Drizzle Kit tools                           |
 
@@ -125,6 +126,10 @@ or email, keep it running.
   boundaries, tenant selection, applications, board persistence, meetings
   import/export, the full public-form lifecycle, membership/role changes,
   account security, sign-out and automated accessibility acceptance.
+- **Live-stack E2E** (`pnpm test:live`) starts a disposable Compose project on
+  isolated high ports, migrates and seeds its database, and proves real sign-in,
+  MinIO quarantine, ClamAV promotion, worker queues, Mailpit delivery and public
+  form submission. It removes only its own containers and volumes when finished.
 - **Isolation tests are release gates.** The tenant-isolation test suite
   (`docs/tenant-isolation.md`) must pass — treat a failure there as a blocker.
 - **Accessibility.** `axe-core` is available for WCAG 2.2 AA checks in tests.

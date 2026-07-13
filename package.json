@@ -31,6 +31,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "test:live": "bash scripts/verify-live-stack.sh",
     "screenshot": "tsx scripts/capture-readme-screenshots.ts",
     "screenshot:landing": "tsx scripts/capture-readme-screenshot.ts",
     "db:generate": "drizzle-kit generate",
