@@ -55,7 +55,9 @@ function signSessionData(input: {
 async function setActiveOrganisation(page: Page, organisationId: string): Promise<void> {
   const cookies = await page.context().cookies();
   const sessionDataCookie = cookies.find(
-    (cookie) => cookie.name === '__Secure-blakpath.session_data',
+    (cookie) =>
+      cookie.name === '__Secure-blakpath.session_data' ||
+      cookie.name === 'blakpath.session_data',
   );
   if (!sessionDataCookie) throw new Error('session cache cookie is missing');
   const decoded = JSON.parse(

@@ -13,10 +13,11 @@ strict tenant isolation and Australian data residency.
 
 All README images are in the gallery below, which is collapsed by default so
 the README stays easy to scan. The gallery is exhaustive: it contains every
-image currently stored in `docs/screenshots`.
+image currently stored in `docs/screenshots`, including the analytics dashboard
+with its workload indicators and activity charts.
 
 <details>
-<summary>Open all 8 screenshots</summary>
+<summary>Open all 8 screenshots, including the analytics dashboard</summary>
 
 ### Screenshot index
 

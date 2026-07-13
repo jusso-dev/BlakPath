@@ -104,7 +104,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
 
 # tini as PID 1 → forwards SIGTERM to node → Next flushes and exits cleanly.
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "server.js"]
 
 ######################################  worker  ##############################
@@ -137,5 +137,5 @@ USER worker
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD pgrep -f "worker/index.ts" > /dev/null || exit 1
 
-ENTRYPOINT ["/usr/bin/tini", "--"]
+ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["pnpm", "exec", "tsx", "worker/index.ts"]
