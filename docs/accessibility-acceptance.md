@@ -16,6 +16,8 @@ non-technical users.
   notifications menu;
 - keyboard-only notification-menu use, task creation and movement, form
   creation, and public form completion;
+- committee calendar import/view/export, membership lifecycle controls and
+  account-security failure/sign-out journeys;
 - chart accessible names, visible keyboard focus, status announcements, errors
   and focus transfer after successful form submission.
 

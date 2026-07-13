@@ -255,7 +255,7 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
     beforeId: string | undefined,
     afterId: string | undefined,
     previous: BoardTask[],
-  ) {
+  ): Promise<boolean> {
     try {
       const res = await fetch(`/api/tasks/${taskId}/move`, {
         method: 'POST',
@@ -269,10 +269,13 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
       if (!res.ok) {
         setTasks(previous);
         setMessage('Could not move the task. Your change was reverted.');
+        return false;
       }
+      return true;
     } catch {
       setTasks(previous);
       setMessage('Could not move the task. Your change was reverted.');
+      return false;
     }
   }
 
@@ -377,8 +380,14 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
         candidate.id === taskId ? { ...candidate, status } : candidate,
       ),
     );
-    setMessage(`${task.title} moved to ${COLUMN_LABELS[status]}.`);
-    void persistMove(taskId, status, destinationTail, undefined, previous);
+    setMessage(`Moving ${task.title} to ${COLUMN_LABELS[status]}…`);
+    void persistMove(taskId, status, destinationTail, undefined, previous).then(
+      (persisted) => {
+        if (persisted) {
+          setMessage(`${task.title} moved to ${COLUMN_LABELS[status]}.`);
+        }
+      },
+    );
   }
 
   return (
@@ -434,7 +443,15 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
         </form>
       ) : null}
       {message ? (
-        <p role="status" className="text-destructive text-sm font-medium">
+        <p
+          role="status"
+          className={cn(
+            'text-sm font-medium',
+            /^(Could not|We could not|Give the task)/.test(message)
+              ? 'text-destructive'
+              : 'text-muted-foreground',
+          )}
+        >
           {message}
         </p>
       ) : null}

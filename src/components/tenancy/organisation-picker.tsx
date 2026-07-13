@@ -1,7 +1,6 @@
 'use client';
 
 import { Check, ChevronRight } from 'lucide-react';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 
 import { Alert } from '@/components/ui/alert';
@@ -34,7 +33,6 @@ export function OrganisationPicker({
   organisations: readonly PickerOrganisation[];
   activeOrganisationId: string | null;
 }) {
-  const router = useRouter();
   const [pendingId, setPendingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,9 +50,10 @@ export function OrganisationPicker({
         setPendingId(null);
         return;
       }
-      // Navigate, then refresh so server components re-read the active org.
-      router.push('/dashboard');
-      router.refresh();
+      // Cross the tenant-selection boundary with a full navigation. This avoids
+      // racing a client-side push against a refresh of the picker route and
+      // guarantees every server component reads the updated session row.
+      window.location.assign('/dashboard');
     } catch {
       setError('We could not switch to that organisation. Please try again.');
       setPendingId(null);

@@ -57,6 +57,7 @@ import {
 export type ApplicationRow = typeof applications.$inferSelect;
 export type ApplicationAssignmentRow = typeof applicationAssignments.$inferSelect;
 export type ApplicationNoteRow = typeof applicationNotes.$inferSelect;
+export type ApplicationStatusHistoryRow = typeof applicationStatusHistory.$inferSelect;
 
 /** Columns that may be patched on an application update. */
 type ApplicationPatch = Partial<typeof applications.$inferInsert>;
@@ -65,6 +66,13 @@ type ApplicationPatch = Partial<typeof applications.$inferInsert>;
 export interface ApplicationDetail {
   readonly application: ApplicationRow;
   readonly assigneeUserIds: readonly string[];
+}
+
+/** Read model for the staff case workspace. */
+export interface ApplicationCaseRecord extends ApplicationDetail {
+  readonly assignments: readonly ApplicationAssignmentRow[];
+  readonly statusHistory: readonly ApplicationStatusHistoryRow[];
+  readonly notes: readonly ApplicationNoteRow[];
 }
 
 /** Assert a row was returned from an insert/update `.returning()`. */
@@ -157,6 +165,49 @@ export async function getApplication(id: string): Promise<ApplicationDetail> {
   });
 
   return { application, assigneeUserIds };
+}
+
+/** Load the auditable case history after applying the normal application read policy. */
+export async function getApplicationCaseRecord(
+  id: string,
+): Promise<ApplicationCaseRecord> {
+  const detail = await getApplication(id);
+  const scope = currentScope();
+  const [assignments, statusHistory, notes] = await Promise.all([
+    scope.db
+      .select()
+      .from(applicationAssignments)
+      .where(
+        scope.where(
+          applicationAssignments.organisationId,
+          eq(applicationAssignments.applicationId, id),
+        ),
+      )
+      .orderBy(desc(applicationAssignments.assignedAt)),
+    scope.db
+      .select()
+      .from(applicationStatusHistory)
+      .where(
+        scope.where(
+          applicationStatusHistory.organisationId,
+          eq(applicationStatusHistory.applicationId, id),
+        ),
+      )
+      .orderBy(desc(applicationStatusHistory.createdAt)),
+    scope.db
+      .select()
+      .from(applicationNotes)
+      .where(
+        scope.where(
+          applicationNotes.organisationId,
+          eq(applicationNotes.applicationId, id),
+          isNull(applicationNotes.deletedAt),
+        ),
+      )
+      .orderBy(desc(applicationNotes.createdAt)),
+  ]);
+
+  return { ...detail, assignments, statusHistory, notes };
 }
 
 /** Create a new application in `draft`. Requires `application:create`. */

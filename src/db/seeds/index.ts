@@ -105,6 +105,8 @@ async function seedDevBootstrap(roleIdBySlug: Map<string, string>): Promise<void
 
   const adminEmail = 'admin@blakpath.local';
   const devPassword = 'blakpath-dev-admin-2026';
+  const staffEmail = 'staff@blakpath.local';
+  const staffPassword = 'blakpath-dev-staff-2026';
 
   const orgId = uuidv7();
   await db
@@ -171,10 +173,19 @@ async function seedDevBootstrap(roleIdBySlug: Map<string, string>): Promise<void
       .where(eq(memberships.id, membershipId));
   }
 
-  // The development user represents a staff administrator who can exercise the
-  // signed-in case workflow. Production memberships are assigned explicitly by
-  // an organisation administrator, never by this bootstrap path.
-  for (const slug of ['organisation-admin', 'intake-officer'] as const) {
+  // The development user deliberately combines the operational roles needed to
+  // exercise every staff screen in the local end-to-end suite. This exception is
+  // confined to the non-production bootstrap; production memberships must keep
+  // the documented separation of duties and are assigned explicitly by an
+  // organisation administrator.
+  const developmentRoles = [
+    'organisation-admin',
+    'intake-officer',
+    'case-officer',
+    'committee-chair',
+    'records-officer',
+  ] as const;
+  for (const slug of developmentRoles) {
     const roleId = roleIdBySlug.get(slug);
     if (roleId) {
       await db
@@ -190,7 +201,33 @@ async function seedDevBootstrap(roleIdBySlug: Map<string, string>): Promise<void
   console.info(`         org:      dev-org (${organisationId})`);
   console.info(`         login:    ${adminEmail}`);
   console.info(`         password: ${devPassword}`);
-  console.info('         roles:    organisation-admin, intake-officer');
+  console.info(`         roles:    ${developmentRoles.join(', ')}`);
+
+  // A verified account with no membership lets the browser suite exercise the
+  // administrator's add/role/suspend/restore/revoke lifecycle without reaching
+  // into the database from Playwright.
+  const [existingStaff] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, staffEmail))
+    .limit(1);
+  if (!existingStaff) {
+    const staffUserId = uuidv7();
+    await db.insert(users).values({
+      id: staffUserId,
+      name: 'Dev Staff Member',
+      email: staffEmail,
+      emailVerified: true,
+    });
+    await db.insert(accounts).values({
+      id: uuidv7(),
+      userId: staffUserId,
+      providerId: 'credential',
+      accountId: staffUserId,
+      password: await argon2Hash(staffPassword, ARGON2_OPTIONS),
+    });
+  }
+  console.info(`         spare:    ${staffEmail} / ${staffPassword} (no membership)`);
 }
 
 async function main(): Promise<void> {

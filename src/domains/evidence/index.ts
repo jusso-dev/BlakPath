@@ -32,6 +32,7 @@ export {
   completeUpload,
   getDownloadUrl,
   listForApplication,
+  listRequestsForApplication,
   processEvidenceScan,
   requestFurtherEvidence,
   requestUpload,

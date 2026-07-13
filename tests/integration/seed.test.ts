@@ -72,8 +72,11 @@ integration('development seed', () => {
         drizzle.eq(schema.membershipRoles.membershipId, membershipRows[0]?.id ?? ''),
       );
     expect(assignedRoleRows.map(({ slug }) => slug).sort()).toEqual([
+      'case-officer',
+      'committee-chair',
       'intake-officer',
       'organisation-admin',
+      'records-officer',
     ]);
   });
 });

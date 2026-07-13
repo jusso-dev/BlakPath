@@ -70,6 +70,12 @@ pnpm db:migrate     # apply migrations (tsx src/db/migrate.ts)
 pnpm db:seed        # seed permission catalogue, system roles, dev org/user
 ```
 
+The non-production seed prints two synthetic test accounts. The administrator
+combines the operational roles needed to exercise every staff screen locally.
+The spare staff account starts with no organisation membership so the Playwright
+suite can verify role assignment, suspension, restoration and revocation. These
+development-only role combinations are never a production onboarding model.
+
 Working on the schema:
 
 ```bash
@@ -115,7 +121,10 @@ or email, keep it running.
 - **Unit & integration** run under **Vitest** (`vitest.config.ts`). Includes
   `tests/unit/**`, `tests/integration/**` and co-located `src/**/*.test.ts`;
   environment is `node`; `@` and `@worker` path aliases are configured.
-- **E2E** runs under **Playwright** (`pnpm test:e2e`).
+- **E2E** runs under **Playwright** (`pnpm test:e2e`) and covers public/auth
+  boundaries, tenant selection, applications, board persistence, meetings
+  import/export, the full public-form lifecycle, membership/role changes,
+  account security, sign-out and automated accessibility acceptance.
 - **Isolation tests are release gates.** The tenant-isolation test suite
   (`docs/tenant-isolation.md`) must pass — treat a failure there as a blocker.
 - **Accessibility.** `axe-core` is available for WCAG 2.2 AA checks in tests.

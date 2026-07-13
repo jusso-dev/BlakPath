@@ -1,24 +1,6 @@
 import axe from 'axe-core';
 import { expect, test, type Page } from '@playwright/test';
-
-const ADMIN_EMAIL = 'admin@blakpath.local';
-const ADMIN_PASSWORD = 'blakpath-dev-admin-2026';
-
-async function signInAndSelectOrganisation(page: Page): Promise<void> {
-  await page.goto('/sign-in');
-  await page.getByLabel('Email').fill(ADMIN_EMAIL);
-  await page.getByLabel('Password').fill(ADMIN_PASSWORD);
-  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-
-  await expect(page).toHaveURL(/\/select-organisation$/);
-  await expect(
-    page.getByRole('heading', { name: 'Choose an organisation' }),
-  ).toBeVisible();
-  await page.getByRole('button', { name: /BlakPath Development Organisation/ }).click();
-
-  await expect(page).toHaveURL(/\/dashboard$/);
-  await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
-}
+import { ADMIN_EMAIL, signInAndSelectOrganisation } from './helpers/auth';
 
 async function expectNoSeriousAccessibilityViolations(page: Page): Promise<void> {
   await page.addScriptTag({ content: axe.source });
@@ -130,8 +112,8 @@ test('staff can select a tenant, validate input, and start and find an applicati
   await page.getByRole('button', { name: 'Start application' }).click();
 
   await expect(page).toHaveURL(/\/applications\/[0-9a-f-]+$/);
-  await expect(page.getByText(applicantName, { exact: false })).toBeVisible();
-  await expect(page.getByText('draft', { exact: false })).toBeVisible();
+  await expect(page.getByLabel('Name as provided')).toHaveValue(applicantName);
+  await expect(page.getByText('Draft', { exact: true }).first()).toBeVisible();
 
   await page.getByRole('link', { name: 'Applications' }).first().click();
   await page.getByLabel('Search applications').fill(applicantName);
@@ -158,5 +140,61 @@ test('organisation administrators can view access controls but cannot suspend th
   await ownMembership.getByRole('button', { name: 'Suspend' }).click();
   await expect(page.getByText('You cannot change your own access here.')).toBeVisible();
   await expect(ownMembership).toContainText('active');
+  await expectNoSeriousAccessibilityViolations(page);
+});
+
+test('staff can continue a case through audited intake and evidence-request steps', async ({
+  page,
+}) => {
+  await signInAndSelectOrganisation(page);
+  await page.goto('/applications');
+
+  const stamp = Date.now();
+  const originalName = `E2E workspace case ${stamp}`;
+  const updatedName = `${originalName} updated`;
+  await page.getByLabel('Name as provided').fill(originalName);
+  await page.getByRole('button', { name: 'Start application' }).click();
+  await expect(page).toHaveURL(/\/applications\/[0-9a-f-]+$/);
+
+  await expect(page.getByRole('heading', { name: /APP-\d{4}-/ })).toBeVisible();
+  await expect(page.getByText('Draft', { exact: true }).first()).toBeVisible();
+  await expect(page.getByText('No evidence has been uploaded.')).toBeVisible();
+  await expect(page.getByText(/Files stay quarantined and unavailable/)).toBeVisible();
+
+  await page.getByLabel('Name as provided').fill(updatedName);
+  await page.getByLabel('Handling priority').selectOption('high');
+  await page.getByRole('button', { name: 'Save details' }).click();
+  await expect(page.getByRole('status')).toContainText('Intake details saved.');
+
+  await page.getByRole('button', { name: 'Assign to me' }).click();
+  await expect(page.getByRole('status')).toContainText('Case assigned to you.');
+  await expect(page.getByText('This case is assigned to you.')).toBeVisible();
+
+  await expect(page.getByLabel('Next step')).toHaveValue('submit');
+  await page.getByRole('button', { name: 'Record next step' }).click();
+  await expect(page.getByText('Submitted', { exact: true }).first()).toBeVisible();
+  await expect(page.getByLabel('Next step')).toHaveValue('begin_intake');
+  await page.getByRole('button', { name: 'Record next step' }).click();
+  await expect(page.getByText('Intake Review', { exact: true }).first()).toBeVisible();
+
+  const requestText = `Please provide the community record discussed at intake ${stamp}`;
+  await page.getByLabel('Request further evidence').fill(requestText);
+  await page.getByRole('button', { name: 'Record request' }).click();
+  await expect(page.getByRole('status')).toContainText('Evidence request recorded.');
+  await expect(page.getByText(requestText, { exact: true })).toBeVisible();
+
+  const noteText = `Applicant prefers contact after 3 pm ${stamp}`;
+  await page.getByLabel('Add a note').fill(noteText);
+  await page.getByRole('button', { name: 'Add note' }).click();
+  await expect(page.getByRole('status')).toContainText('Case note added.');
+  await expect(page.getByText(noteText, { exact: true })).toBeVisible();
+
+  const denied = await page.request.patch(
+    '/api/applications/00000000-0000-4000-8000-000000000000',
+    { data: { operation: 'assign_self' } },
+  );
+  expect(denied.status()).toBe(403);
+  await expect(denied.json()).resolves.toEqual({ error: 'Forbidden' });
+
   await expectNoSeriousAccessibilityViolations(page);
 });

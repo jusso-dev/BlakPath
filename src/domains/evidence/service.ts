@@ -253,6 +253,24 @@ export async function listForApplication(applicationId: string): Promise<Evidenc
     .orderBy(desc(evidence.createdAt));
 }
 
+/** List staff requests for evidence on an application the actor may read. */
+export async function listRequestsForApplication(
+  applicationId: string,
+): Promise<EvidenceRequestRow[]> {
+  await getApplication(applicationId);
+  const scope = currentScope();
+  return scope.db
+    .select()
+    .from(evidenceRequests)
+    .where(
+      scope.where(
+        evidenceRequests.organisationId,
+        eq(evidenceRequests.applicationId, applicationId),
+      ),
+    )
+    .orderBy(desc(evidenceRequests.createdAt));
+}
+
 /** Record an administrative classification on a piece of evidence. */
 export async function classifyEvidence(
   evidenceId: string,

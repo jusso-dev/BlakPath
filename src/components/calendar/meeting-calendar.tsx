@@ -216,7 +216,7 @@ export function MeetingCalendar({ events }: { events: CalendarEvent[] }) {
                   </span>
                 </div>
                 <ul className="mt-1 space-y-1">
-                  {dayEvents.slice(0, 3).map((event) => (
+                  {dayEvents.map((event) => (
                     <li
                       key={event.id}
                       title={event.title}
@@ -234,11 +234,6 @@ export function MeetingCalendar({ events }: { events: CalendarEvent[] }) {
                       {event.title}
                     </li>
                   ))}
-                  {dayEvents.length > 3 ? (
-                    <li className="text-muted-foreground px-1.5 text-xs">
-                      +{dayEvents.length - 3} more
-                    </li>
-                  ) : null}
                 </ul>
               </div>
             );

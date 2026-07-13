@@ -1,29 +1,46 @@
+import Link from 'next/link';
+import {
+  ApplicationCaseWorkspace,
+  type ApplicationCaseWorkspaceProps,
+} from '@/components/applications/application-case-workspace';
 import {
   CertificatePanel,
   type PanelCertificate,
   type PanelDecision,
 } from '@/components/certificates/certificate-panel';
-import { withRequestTenant } from '@/lib/http/tenant-route';
-import { getApplication } from '@/domains/applications';
-import { listDecisions } from '@/domains/decisions';
+import {
+  availableActions,
+  getApplicationCaseRecord,
+  permissionsForAction,
+  type ApplicationStatus,
+} from '@/domains/applications';
 import { listCertificates } from '@/domains/certificates';
+import { listDecisions } from '@/domains/decisions';
+import { listForApplication, listRequestsForApplication } from '@/domains/evidence';
+import { listReviewsForApplication } from '@/domains/reviews';
+import { withRequestTenant } from '@/lib/http/tenant-route';
+import { hasAny, hasPermission, subjectFromContext } from '@/lib/permissions/check';
 
-/**
- * Application detail (RSC).
- *
- * A minimal case view: the application summary, its committee decisions, and the
- * certificate panel. Loaded inside a DB-verified tenant context; the read is
- * permission-checked and audited by `getApplication`. A fuller case view (intake,
- * evidence, reviews, meetings) is future work — this page currently anchors the
- * Phase 6 certificate flow.
- */
 interface LoadedData {
   reference: string;
-  applicantName: string;
-  status: string;
+  workspace: ApplicationCaseWorkspaceProps;
   decisions: PanelDecision[];
   certificates: PanelCertificate[];
 }
+
+const actionLabels: Record<string, string> = {
+  submit: 'Submit for intake',
+  begin_intake: 'Begin intake review',
+  request_evidence: 'Move to awaiting evidence',
+  provide_evidence: 'Resume review after evidence',
+  start_review: 'Start review',
+  ready_for_committee: 'Mark ready for committee',
+  schedule_committee: 'Record committee scheduling',
+  record_decision: 'Record decision stage complete',
+  withdraw: 'Record withdrawal',
+  reopen: 'Reopen for intake review',
+  close: 'Close case record',
+};
 
 export default async function ApplicationDetailPage({
   params,
@@ -31,29 +48,92 @@ export default async function ApplicationDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-
   let data: LoadedData | null = null;
+
   try {
-    data = await withRequestTenant(async () => {
-      const { application } = await getApplication(id);
-      const decisions = await listDecisions(id);
-      const certificates = await listCertificates(id);
+    data = await withRequestTenant(async (ctx) => {
+      const [record, evidence, evidenceRequests, reviews, decisions, certificates] =
+        await Promise.all([
+          getApplicationCaseRecord(id),
+          listForApplication(id),
+          listRequestsForApplication(id),
+          listReviewsForApplication(id),
+          listDecisions(id),
+          listCertificates(id),
+        ]);
+      const subject = subjectFromContext(ctx);
+      const application = record.application;
+      const actions = availableActions(application.status as ApplicationStatus)
+        .filter((action) => hasAny(subject, permissionsForAction(action)))
+        .map((action) => ({ value: action, label: actionLabels[action] ?? action }));
+
       return {
         reference: application.reference,
-        applicantName: application.applicantName,
-        status: application.status,
-        decisions: decisions.map((d) => ({
-          id: d.id,
-          proposedOutcome: d.proposedOutcome,
-          finalOutcome: d.finalOutcome,
-          status: d.status,
+        workspace: {
+          applicationId: id,
+          applicantName: application.applicantName,
+          priority: application.priority,
+          status: application.status,
+          assignedToCurrentUser: application.currentAssigneeUserId === ctx.userId,
+          availableActions: actions,
+          evidence: evidence.map((item) => ({
+            id: item.id,
+            fileName: item.fileName,
+            status: item.status,
+            classification: item.classification,
+            sizeBytes: item.sizeBytes,
+            createdAt: item.createdAt.toISOString(),
+          })),
+          evidenceRequests: evidenceRequests.map((request) => ({
+            id: request.id,
+            description: request.description,
+            status: request.status,
+            dueAt: request.dueAt?.toISOString() ?? null,
+            createdAt: request.createdAt.toISOString(),
+          })),
+          reviews: reviews.map((review) => ({
+            id: review.id,
+            status: review.status,
+            summary: review.content,
+            createdAt: review.createdAt.toISOString(),
+          })),
+          history: record.statusHistory.map((entry) => ({
+            id: entry.id,
+            action: entry.action,
+            toStatus: entry.toStatus,
+            note: entry.note,
+            createdAt: entry.createdAt.toISOString(),
+          })),
+          notes: record.notes.map((note) => ({
+            id: note.id,
+            body: note.body,
+            visibility: note.visibility,
+            createdAt: note.createdAt.toISOString(),
+          })),
+          permissions: {
+            updateIntake: hasPermission(subject, 'application:update-intake'),
+            assign: hasPermission(subject, 'application:assign'),
+            requestEvidence: hasPermission(subject, 'evidence:request'),
+            downloadEvidence: hasPermission(subject, 'evidence:download'),
+            addNote: hasAny(subject, [
+              'application:read-any',
+              'application:read-assigned',
+              'application:update-intake',
+            ]),
+          },
+        },
+        decisions: decisions.map((decision) => ({
+          id: decision.id,
+          proposedOutcome: decision.proposedOutcome,
+          finalOutcome: decision.finalOutcome,
+          status: decision.status,
         })),
-        certificates: certificates.map((c) => ({
-          id: c.id,
-          reference: c.reference,
-          status: c.status,
-          decisionId: c.decisionId,
-          revokedReason: c.revokedReason,
+        certificates: certificates.map((certificate) => ({
+          id: certificate.id,
+          reference: certificate.reference,
+          status: certificate.status,
+          decisionId: certificate.decisionId,
+          revokedReason: certificate.revokedReason,
         })),
       };
     });
@@ -64,35 +144,59 @@ export default async function ApplicationDetailPage({
   if (!data) {
     return (
       <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
-        <p className="text-muted-foreground">
-          Sign in and select your organisation to view this application, or you may not
-          have access to it.
+        <h1 className="text-xl font-semibold">Application unavailable</h1>
+        <p className="text-muted-foreground mt-2">
+          This application does not exist, is outside your organisation, or your role does
+          not allow you to view it.
         </p>
+        <Link
+          className="text-primary mt-4 inline-block font-semibold underline-offset-4 hover:underline"
+          href="/applications"
+        >
+          Return to applications
+        </Link>
       </div>
     );
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-4xl flex-col gap-8 px-4 py-8 sm:px-6">
+    <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-4 py-8 sm:px-6">
       <header>
-        <h1 className="text-2xl font-semibold tracking-tight">{data.reference}</h1>
-        <p className="text-muted-foreground mt-1">
-          {data.applicantName} · {data.status.replace(/_/g, ' ')}
-        </p>
+        <Link
+          href="/applications"
+          className="text-muted-foreground text-sm font-semibold underline-offset-4 hover:underline"
+        >
+          Applications
+        </Link>
+        <p className="text-muted-foreground mt-4 text-sm font-medium">Case workspace</p>
+        <h1 className="mt-1 text-3xl font-semibold tracking-tight">{data.reference}</h1>
       </header>
 
-      <section aria-label="Decisions" className="flex flex-col gap-2">
-        <h2 className="text-lg font-semibold tracking-tight">Committee decisions</h2>
+      <ApplicationCaseWorkspace key={data.workspace.status} {...data.workspace} />
+
+      <section
+        aria-labelledby="decisions-heading"
+        className="border-border border-t pt-8"
+      >
+        <h2 id="decisions-heading" className="text-lg font-semibold">
+          Committee decisions
+        </h2>
+        <p className="text-muted-foreground mt-1 text-sm">
+          Outcomes shown here are recorded by authorised people, never generated by
+          BlakPath.
+        </p>
         {data.decisions.length === 0 ? (
-          <p className="text-muted-foreground text-sm">No decisions recorded yet.</p>
+          <p className="text-muted-foreground mt-3 text-sm">No decisions recorded yet.</p>
         ) : (
-          <ul className="flex flex-col gap-1.5 text-sm">
-            {data.decisions.map((d) => (
-              <li key={d.id} className="flex items-center justify-between">
-                <span>Proposed: {d.proposedOutcome.replace(/_/g, ' ')}</span>
+          <ul className="mt-3 flex flex-col gap-2 text-sm">
+            {data.decisions.map((decision) => (
+              <li key={decision.id} className="flex items-center justify-between gap-4">
+                <span>Proposed: {decision.proposedOutcome.replace(/_/g, ' ')}</span>
                 <span className="text-muted-foreground">
-                  {d.status}
-                  {d.finalOutcome ? ` · ${d.finalOutcome.replace(/_/g, ' ')}` : ''}
+                  {decision.status}
+                  {decision.finalOutcome
+                    ? ` · ${decision.finalOutcome.replace(/_/g, ' ')}`
+                    : ''}
                 </span>
               </li>
             ))}
