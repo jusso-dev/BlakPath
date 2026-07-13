@@ -9,9 +9,14 @@
  */
 export {
   createNotification,
+  listNotifications,
+  markAllRead,
+  markRead,
   markEmailed,
   queueNotification,
+  unreadCount,
   renderNotificationEmail,
   type CreateNotificationInput,
+  type NotificationListItem,
   type NotificationRow,
 } from './service';

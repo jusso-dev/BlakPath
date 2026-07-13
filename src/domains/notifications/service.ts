@@ -1,7 +1,8 @@
-import { and, eq } from 'drizzle-orm';
+import { and, count, desc, eq, isNull } from 'drizzle-orm';
 import { uuidv7 } from 'uuidv7';
 import { notifications } from '@/db/schema';
-import { scopeFor } from '@/db/tenant-db';
+import { currentScope, scopeFor } from '@/db/tenant-db';
+import { requireTenantContext } from '@/lib/tenancy/context';
 import { addJob, QueueName } from '@/lib/queues';
 export { renderNotificationEmail } from './templates';
 
@@ -19,6 +20,19 @@ export { renderNotificationEmail } from './templates';
  */
 
 export type NotificationRow = typeof notifications.$inferSelect;
+
+/** Safe, user-facing projection. Never exposes tenant or recipient identifiers. */
+export type NotificationListItem = Pick<
+  NotificationRow,
+  | 'id'
+  | 'type'
+  | 'title'
+  | 'body'
+  | 'resourceType'
+  | 'resourceId'
+  | 'readAt'
+  | 'createdAt'
+>;
 
 export interface CreateNotificationInput {
   organisationId: string;
@@ -96,4 +110,91 @@ export async function markEmailed(
         eq(notifications.id, notificationId),
       ),
     );
+}
+
+/**
+ * List the current member's notifications in their active tenant. The user id
+ * comes only from the verified tenant context, so a browser can never request
+ * another member's inbox.
+ */
+export async function listNotifications(limit = 50): Promise<NotificationListItem[]> {
+  const ctx = requireTenantContext();
+  const scope = currentScope();
+  const safeLimit = Math.min(Math.max(Math.floor(limit), 1), 100);
+
+  return scope.db
+    .select({
+      id: notifications.id,
+      type: notifications.type,
+      title: notifications.title,
+      body: notifications.body,
+      resourceType: notifications.resourceType,
+      resourceId: notifications.resourceId,
+      readAt: notifications.readAt,
+      createdAt: notifications.createdAt,
+    })
+    .from(notifications)
+    .where(
+      scope.where(notifications.organisationId, eq(notifications.userId, ctx.userId)),
+    )
+    .orderBy(desc(notifications.createdAt))
+    .limit(safeLimit);
+}
+
+/** Count unread notifications for the current member and tenant. */
+export async function unreadCount(): Promise<number> {
+  const ctx = requireTenantContext();
+  const scope = currentScope();
+  const rows = await scope.db
+    .select({ count: count() })
+    .from(notifications)
+    .where(
+      scope.where(
+        notifications.organisationId,
+        eq(notifications.userId, ctx.userId),
+        isNull(notifications.readAt),
+      ),
+    );
+  return Number(rows[0]?.count ?? 0);
+}
+
+/**
+ * Mark one of the current member's unread notifications as read. A missing,
+ * already-read, or another-member notification all return false to avoid
+ * revealing anything outside the caller's own scoped inbox.
+ */
+export async function markRead(id: string): Promise<boolean> {
+  const ctx = requireTenantContext();
+  const scope = currentScope();
+  const updated = await scope.db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(
+      scope.where(
+        notifications.organisationId,
+        eq(notifications.userId, ctx.userId),
+        eq(notifications.id, id),
+        isNull(notifications.readAt),
+      ),
+    )
+    .returning({ id: notifications.id });
+  return updated.length === 1;
+}
+
+/** Mark every unread notification in the current member's tenant inbox as read. */
+export async function markAllRead(): Promise<number> {
+  const ctx = requireTenantContext();
+  const scope = currentScope();
+  const updated = await scope.db
+    .update(notifications)
+    .set({ readAt: new Date() })
+    .where(
+      scope.where(
+        notifications.organisationId,
+        eq(notifications.userId, ctx.userId),
+        isNull(notifications.readAt),
+      ),
+    )
+    .returning({ id: notifications.id });
+  return updated.length;
 }

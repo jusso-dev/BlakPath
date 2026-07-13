@@ -17,9 +17,9 @@ export const metadata: Metadata = {
 export default function SecuritySettingsPage() {
   return (
     <section aria-labelledby="security-heading" className="mt-6 max-w-2xl">
-      <h2 id="security-heading" className="text-xl font-semibold tracking-tight">
+      <h1 id="security-heading" className="text-2xl font-semibold tracking-tight">
         Account security
-      </h2>
+      </h1>
       <p className="text-muted-foreground mt-2">
         Add extra protection to your account with two-step verification and passkeys.
       </p>
