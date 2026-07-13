@@ -97,6 +97,7 @@ jobs:
       S3_SECRET_ACCESS_KEY: test-secret
       CLAMAV_HOST: localhost
       SMTP_HOST: localhost
+      RUN_INTEGRATION: 'true'
     steps:
       - uses: actions/checkout@v4
 
@@ -117,6 +118,9 @@ jobs:
 
       - name: Run database migrations
         run: pnpm db:migrate
+
+      - name: Seed development bootstrap
+        run: pnpm db:seed
 
       - name: Run tests
         run: pnpm test
