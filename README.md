@@ -11,11 +11,23 @@ strict tenant isolation and Australian data residency.
 
 ## Interface preview
 
-The screenshots are grouped below and collapsed by default so the README stays
-easy to scan.
+All README images are in the gallery below, which is collapsed by default so
+the README stays easy to scan. The gallery is exhaustive: it contains every
+image currently stored in `docs/screenshots`.
 
 <details>
-<summary>Open the screenshot gallery</summary>
+<summary>Open all 8 screenshots</summary>
+
+### Screenshot index
+
+1. Public landing page
+2. Staff sign-in page
+3. Organisation picker
+4. Staff dashboard
+5. Work board
+6. Forms
+7. Committee meetings
+8. Account security
 
 ### Public entry
 
