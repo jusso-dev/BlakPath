@@ -50,7 +50,7 @@ export function NewFormButton() {
   if (!open) {
     return (
       <Button type="button" size="sm" onClick={() => setOpen(true)}>
-        New form
+        Create a form
       </Button>
     );
   }

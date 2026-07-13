@@ -35,15 +35,22 @@ export default async function FormsPage() {
     <div className="mx-auto w-full max-w-4xl px-4 py-8 sm:px-6">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <h1 className="text-2xl font-semibold tracking-tight">Forms</h1>
-        {error ? null : <NewFormButton />}
+        {error || forms.length === 0 ? null : <NewFormButton />}
       </div>
 
       {error ? (
         <p className="text-muted-foreground">{error}</p>
       ) : forms.length === 0 ? (
-        <p className="text-muted-foreground">
-          No forms yet. Create one to start collecting information.
-        </p>
+        <section className="border-border bg-surface max-w-xl rounded-lg border p-5">
+          <h2 className="text-lg font-semibold">Create your first form</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            Forms help you collect the information you need from people, in a clear and
+            consistent way.
+          </p>
+          <div className="mt-4">
+            <NewFormButton />
+          </div>
+        </section>
       ) : (
         <ul className="flex flex-col gap-2">
           {forms.map((form) => (

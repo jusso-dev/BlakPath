@@ -6,6 +6,7 @@ import {
   KeyboardSensor,
   PointerSensor,
   closestCorners,
+  useDroppable,
   useSensor,
   useSensors,
   type DragEndEvent,
@@ -18,6 +19,9 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import {
   BOARD_COLUMNS,
   type BoardColumn,
@@ -115,10 +119,16 @@ function TaskCard({ task }: { task: BoardTask }) {
 }
 
 function Column({ status, tasks }: { status: BoardColumn; tasks: BoardTask[] }) {
+  const { setNodeRef, isOver } = useDroppable({ id: status });
+
   return (
     <section
+      ref={setNodeRef}
       aria-label={COLUMN_LABELS[status]}
-      className="border-border bg-muted/30 flex min-w-64 flex-1 flex-col gap-3 rounded-lg border p-3"
+      className={cn(
+        'border-border bg-muted/30 flex min-w-64 flex-1 flex-col gap-3 rounded-lg border p-3 transition-colors',
+        isOver && 'bg-status-info-surface ring-status-info ring-2',
+      )}
     >
       <header className="flex items-center justify-between">
         <h2 className="text-primary text-sm font-semibold">{COLUMN_LABELS[status]}</h2>
@@ -153,6 +163,9 @@ function groupByColumn(tasks: BoardTask[]): Record<BoardColumn, BoardTask[]> {
 export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
   const [tasks, setTasks] = useState<BoardTask[]>(initialTasks);
   const [message, setMessage] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [creating, setCreating] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -252,10 +265,90 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
     void persistMove(activeId, toColumn, beforeId, afterId, previous);
   }
 
+  async function createNewTask(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = newTaskTitle.trim();
+    if (!title) {
+      setMessage('Give the task a short name before adding it.');
+      return;
+    }
+
+    setCreating(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/tasks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title }),
+      });
+      if (!response.ok) throw new Error('Unable to create task.');
+      const { task } = (await response.json()) as {
+        task: Omit<BoardTask, 'assigneeName'> & { dueAt: string | null };
+      };
+      setTasks((current) => [...current, { ...task, assigneeName: null }]);
+      setNewTaskTitle('');
+      setAdding(false);
+    } catch {
+      setMessage('We could not add that task. Please try again.');
+    } finally {
+      setCreating(false);
+    }
+  }
+
   return (
     <div className="flex flex-col gap-3">
+      <div className="border-border bg-surface flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
+        <div>
+          <h2 className="font-semibold">Keep work moving</h2>
+          <p className="text-muted-foreground text-sm">
+            Add a task, then drag it to the column that shows its progress.
+          </p>
+        </div>
+        {!adding ? (
+          <Button type="button" size="sm" onClick={() => setAdding(true)}>
+            Add task
+          </Button>
+        ) : null}
+      </div>
+      {adding ? (
+        <form
+          onSubmit={createNewTask}
+          className="border-border bg-surface flex flex-col gap-3 rounded-lg border p-3 sm:flex-row sm:items-end"
+        >
+          <div className="min-w-0 flex-1">
+            <Label htmlFor="new-task-title" required>
+              What needs to be done?
+            </Label>
+            <Input
+              id="new-task-title"
+              value={newTaskTitle}
+              onChange={(event) => setNewTaskTitle(event.target.value)}
+              placeholder="For example, review the new application"
+              autoFocus
+              disabled={creating}
+            />
+          </div>
+          <div className="flex gap-2">
+            <Button type="submit" size="sm" disabled={creating}>
+              {creating ? 'Adding…' : 'Add task'}
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={creating}
+              onClick={() => {
+                setAdding(false);
+                setNewTaskTitle('');
+              }}
+            >
+              Cancel
+            </Button>
+          </div>
+        </form>
+      ) : null}
       {message ? (
-        <p role="status" className="text-muted-foreground text-sm">
+        <p role="status" className="text-destructive text-sm font-medium">
           {message}
         </p>
       ) : null}

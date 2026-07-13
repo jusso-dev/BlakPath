@@ -384,9 +384,12 @@ export function StatDashboard({
         <div>
           <p className="text-muted-foreground text-sm">Current workload</p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight">At a glance</h2>
+          <p className="text-muted-foreground mt-1 text-sm">
+            To rearrange the sections below, drag the dots beside a section heading.
+          </p>
         </div>
         <Button type="button" variant="ghost" size="sm" onClick={resetLayout}>
-          Reset layout
+          Reset section order
         </Button>
       </div>
 

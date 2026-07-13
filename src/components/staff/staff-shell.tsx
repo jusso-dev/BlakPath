@@ -116,6 +116,9 @@ export function StaffShell({
                     className="text-muted-foreground size-4 shrink-0"
                     aria-hidden="true"
                   />
+                  <span className="text-muted-foreground hidden text-xs font-medium lg:inline">
+                    Organisation
+                  </span>
                   <span className="max-w-36 truncate text-sm font-semibold sm:max-w-56">
                     {switching ? 'Switching…' : current?.organisationName}
                   </span>

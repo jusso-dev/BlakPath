@@ -152,7 +152,7 @@ export function MeetingCalendar({ events }: { events: CalendarEvent[] }) {
         <div className="flex items-center gap-2">
           <Button asChild variant="outline" size="sm">
             <a href="/api/calendar/meetings" download>
-              Export .ics
+              Download calendar file
             </a>
           </Button>
           <Button
@@ -162,7 +162,7 @@ export function MeetingCalendar({ events }: { events: CalendarEvent[] }) {
             disabled={pending}
             onClick={() => fileInput.current?.click()}
           >
-            {pending ? 'Importing…' : 'Import .ics'}
+            {pending ? 'Adding…' : 'Add calendar file'}
           </Button>
           <input
             ref={fileInput}
