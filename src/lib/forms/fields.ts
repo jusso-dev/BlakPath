@@ -142,7 +142,7 @@ function valueSchemaForField(field: FormField): z.ZodTypeAny {
     case 'select':
       return z.enum(field.options as [string, ...string[]]);
     case 'multiselect':
-      return z.array(z.enum(field.options as [string, ...string[]])).min(0);
+      return z.array(z.enum(field.options as [string, ...string[]])).min(1);
   }
 }
 

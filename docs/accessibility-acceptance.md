@@ -64,7 +64,9 @@ if a willing participant uses that access method.
 
 For each finding, record the journey, observed difficulty, participant impact,
 severity, owner, target date and follow-up issue. Do not identify participants
-in the repository.
+in the repository. Start from
+[`assisted-usability-review-template.md`](assisted-usability-review-template.md)
+so every observation is consistently triaged.
 
 ## Known exceptions
 

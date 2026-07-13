@@ -91,6 +91,19 @@ describe('typed field validation', () => {
     expect(validateResponse(fields, { mob: 'A' }).success).toBe(true);
     expect(validateResponse(fields, { mob: 'Z' }).success).toBe(false);
   });
+
+  it('requires at least one choice for a required multiselect', () => {
+    const fields = [
+      field({
+        type: 'multiselect',
+        key: 'records',
+        required: true,
+        options: ['Family record', 'Community record'],
+      } as never),
+    ];
+    expect(validateResponse(fields, { records: [] }).success).toBe(false);
+    expect(validateResponse(fields, { records: ['Family record'] }).success).toBe(true);
+  });
 });
 
 describe('parseFieldsJson', () => {

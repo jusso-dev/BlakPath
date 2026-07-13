@@ -48,6 +48,14 @@ function buildInitialState(fields: FormField[]): Record<string, AnswerValue> {
   return state;
 }
 
+function missingRequiredAnswer(field: FormField, value: AnswerValue): boolean {
+  if (!field.required || field.type === 'boolean') return false;
+  if (field.type === 'multiselect') {
+    return !Array.isArray(value) || value.length === 0;
+  }
+  return typeof value !== 'string' || value.trim().length === 0;
+}
+
 /**
  * Shape the tracked values into the answer object we submit. Empty optional
  * fields are omitted; numbers are coerced; multiselect stays an array. The
@@ -112,10 +120,18 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
     buildInitialState(form.fields),
   );
   const [submit, setSubmit] = useState<SubmitState>({ status: 'idle' });
+  const [invalidKeys, setInvalidKeys] = useState<ReadonlySet<string>>(new Set());
   const successRef = useRef<HTMLDivElement>(null);
+  const errorRef = useRef<HTMLParagraphElement>(null);
 
   function setValue(key: string, value: AnswerValue) {
     setValues((prev) => ({ ...prev, [key]: value }));
+    setInvalidKeys((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   }
 
   function toggleMultiselect(key: string, option: string, checked: boolean) {
@@ -127,12 +143,39 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
         : list.filter((o) => o !== option);
       return { ...prev, [key]: next };
     });
+    setInvalidKeys((current) => {
+      if (!current.has(key)) return current;
+      const next = new Set(current);
+      next.delete(key);
+      return next;
+    });
   }
 
   async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (submit.status === 'submitting') return;
 
+    const missing = form.fields.filter((field) =>
+      missingRequiredAnswer(field, values[field.key] ?? initialValue(field)),
+    );
+    if (missing.length > 0) {
+      const keys = new Set(missing.map(({ key }) => key));
+      setInvalidKeys(keys);
+      setSubmit({
+        status: 'error',
+        message: 'Some answers need another look. Please check the form and try again.',
+      });
+      const first = missing[0];
+      requestAnimationFrame(() => {
+        if (!first) return;
+        const id = `${baseId}-${first.key}`;
+        const focusId = first.type === 'multiselect' ? `${id}-opt-0` : id;
+        document.getElementById(focusId)?.focus();
+      });
+      return;
+    }
+
+    setInvalidKeys(new Set());
     setSubmit({ status: 'submitting' });
     const answers = buildAnswers(form.fields, values);
 
@@ -155,6 +198,7 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
           status: 'error',
           message: 'This link is no longer valid.',
         });
+        requestAnimationFrame(() => errorRef.current?.focus());
         return;
       }
 
@@ -164,12 +208,14 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
         status: 'error',
         message: 'Some answers need another look. Please check the form and try again.',
       });
+      requestAnimationFrame(() => errorRef.current?.focus());
     } catch {
       setSubmit({
         status: 'error',
         message:
           'We could not reach the server. Please check your connection and try again.',
       });
+      requestAnimationFrame(() => errorRef.current?.focus());
     }
   }
 
@@ -210,6 +256,7 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
               field={field}
               baseId={baseId}
               value={values[field.key] ?? initialValue(field)}
+              invalid={invalidKeys.has(field.key)}
               onValueChange={(value) => setValue(field.key, value)}
               onToggleOption={(option, checked) =>
                 toggleMultiselect(field.key, option, checked)
@@ -218,7 +265,12 @@ export function PublicFormRenderer({ token, form }: { token: string; form: Publi
           ))}
 
           {submit.status === 'error' ? (
-            <p role="alert" className="text-destructive text-sm font-medium">
+            <p
+              ref={errorRef}
+              role="alert"
+              tabIndex={-1}
+              className="text-destructive text-sm font-medium focus:outline-none"
+            >
               {submit.message}
             </p>
           ) : null}
@@ -239,12 +291,14 @@ function FieldControl({
   field,
   baseId,
   value,
+  invalid,
   onValueChange,
   onToggleOption,
 }: {
   field: FormField;
   baseId: string;
   value: AnswerValue;
+  invalid: boolean;
   onValueChange: (value: AnswerValue) => void;
   onToggleOption: (option: string, checked: boolean) => void;
 }) {
@@ -264,6 +318,7 @@ function FieldControl({
             type="checkbox"
             checked={checked}
             aria-required={field.required}
+            aria-invalid={invalid || undefined}
             {...(descriptionId ? { 'aria-describedby': descriptionId } : {})}
             onChange={(e) => onValueChange(e.target.checked)}
             className="border-input text-primary focus-visible:ring-ring mt-0.5 size-5 rounded"
@@ -284,8 +339,14 @@ function FieldControl({
   if (field.type === 'multiselect') {
     const selected = Array.isArray(value) ? value : [];
     const descriptionId = helpText ? `${id}-description` : undefined;
+    const errorId = invalid ? `${id}-error` : undefined;
+    const describedBy = [descriptionId, errorId].filter(Boolean).join(' ') || undefined;
     return (
-      <fieldset className="flex flex-col gap-2">
+      <fieldset
+        className="flex flex-col gap-2"
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+      >
         <legend className="text-foreground inline-flex items-center gap-1 text-sm font-medium">
           {field.label}
           {field.required ? (
@@ -319,6 +380,11 @@ function FieldControl({
             );
           })}
         </div>
+        {invalid ? (
+          <p id={errorId} role="alert" className="text-destructive text-sm font-medium">
+            This answer is required.
+          </p>
+        ) : null}
       </fieldset>
     );
   }
@@ -330,6 +396,7 @@ function FieldControl({
       id={id}
       label={field.label}
       required={field.required}
+      error={invalid ? 'This answer is required.' : undefined}
       {...(helpText ? { description: helpText } : {})}
     >
       {(props) => {

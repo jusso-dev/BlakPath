@@ -8,6 +8,8 @@ import axe from 'axe-core';
  * the element that needs attention instead of only naming the rule.
  */
 export async function expectNoWcagViolations(page: Page): Promise<void> {
+  // Next.js may stream metadata after visible content on slower CI runners.
+  await expect(page).toHaveTitle(/\S/);
   await page.addScriptTag({ content: axe.source });
   const violations = await page.evaluate(async () => {
     type Violation = {

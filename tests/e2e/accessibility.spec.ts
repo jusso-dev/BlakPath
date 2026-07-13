@@ -63,6 +63,7 @@ test('organisation selection and core staff journeys meet automated WCAG checks'
 
   await auditRoute(page, '/board', 'Work board');
   await auditRoute(page, '/forms', 'Forms');
+  await auditRoute(page, '/notifications', 'Notifications');
 
   await page.goto('/dashboard');
   const notifications = page.getByRole('button', { name: /^Notifications,/ });
@@ -129,6 +130,7 @@ test('keyboard users can navigate menus, board work and public forms', async ({
   await page.getByRole('button', { name: 'Add field' }).focus();
   await page.keyboard.press('Enter');
   await page.getByRole('textbox', { name: /^Label/ }).fill('Your response');
+  await page.getByRole('checkbox', { name: 'Required' }).check();
   await page.getByRole('button', { name: 'Save', exact: true }).focus();
   await page.keyboard.press('Enter');
   await expect(page.getByRole('status')).toHaveText('Saved.');
@@ -146,6 +148,15 @@ test('keyboard users can navigate menus, board work and public forms', async ({
 
   await page.goto(publicUrl);
   const response = page.getByLabel('Your response');
+  await page.getByRole('button', { name: 'Submit' }).focus();
+  await page.keyboard.press('Enter');
+  await expect(
+    page.getByRole('alert').filter({ hasText: 'Some answers need another look' }),
+  ).toBeVisible();
+  await expect(response).toBeFocused();
+  await expect(response).toHaveAttribute('aria-invalid', 'true');
+  await expectNoWcagViolations(page);
+
   await response.focus();
   await expectVisibleFocus(page);
   await page.keyboard.type('Information provided by the applicant');
