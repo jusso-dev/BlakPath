@@ -161,6 +161,9 @@ The app runs at <http://localhost:3000>.
 | `pnpm db:studio`   | Open Drizzle Studio                           |
 | `pnpm db:seed`     | Seed baseline data                            |
 
+Accessibility acceptance coverage and the required assisted-review record are
+documented in [`docs/accessibility-acceptance.md`](docs/accessibility-acceptance.md).
+
 ## Repository layout
 
 ```text
@@ -200,6 +203,7 @@ BlakPath/
 | [`docs/audit-log-design.md`](docs/audit-log-design.md)                 | Event schema, SHA-256 hash chaining, checkpoints, redaction                                    |
 | [`docs/threat-model.md`](docs/threat-model.md)                         | Assets, trust boundaries, STRIDE analysis, mitigations, fail-secure                            |
 | [`docs/privacy-architecture.md`](docs/privacy-architecture.md)         | Data minimisation, sovereignty, envelope encryption, AI boundaries                             |
+| [`docs/production-readiness.md`](docs/production-readiness.md)         | Production release gate, monitoring, backups and restore drills                                |
 | [`docs/evidence-scanning-design.md`](docs/evidence-scanning-design.md) | Secure upload → quarantine → ClamAV → promote/serve lifecycle                                  |
 | [`docs/local-development.md`](docs/local-development.md)               | Setup, services, commands, testing, troubleshooting                                            |
 

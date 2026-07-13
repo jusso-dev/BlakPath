@@ -189,6 +189,8 @@ function ApplicationActivityChart({
           className="h-56"
         >
           <svg
+            aria-hidden="true"
+            focusable="false"
             viewBox={`0 0 ${width} ${height}`}
             className="size-full"
             preserveAspectRatio="none"
@@ -547,6 +549,7 @@ export function StatDashboard({
       <ApplicationActivityChart points={applicationActivity} />
 
       <DndContext
+        id="dashboard-widget-dnd"
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragEnd={onDragEnd}

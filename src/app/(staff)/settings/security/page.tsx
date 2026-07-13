@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import Link from 'next/link';
 
 import { SecuritySettings } from '@/components/auth/security-settings';
+import { Button } from '@/components/ui/button';
 
 /**
  * Account security settings (RSC wrapper).
@@ -23,6 +25,11 @@ export default function SecuritySettingsPage() {
       <p className="text-muted-foreground mt-2">
         Add extra protection to your account with two-step verification and passkeys.
       </p>
+      <div className="mt-4">
+        <Button asChild variant="outline" size="sm">
+          <Link href="/settings/people">Manage people and access</Link>
+        </Button>
+      </div>
       <div className="mt-8">
         <SecuritySettings />
       </div>

@@ -52,8 +52,8 @@
   --color-foreground: var(--color-charcoal);
   --color-foreground-muted: #5b5347;
 
-  --color-primary: var(--color-ochre);
-  --color-primary-hover: var(--color-ochre-deep);
+  --color-primary: var(--color-ochre-deep);
+  --color-primary-hover: #713611;
   --color-primary-foreground: #fffdf9;
 
   --color-secondary: var(--color-surface-muted);

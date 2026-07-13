@@ -15,9 +15,9 @@ import { cn } from '@/lib/utils';
  * navigates to the dashboard and refreshes so server components re-read the new
  * active organisation.
  *
- * NOTE: Better Auth caches the session in a cookie for ~60s, so the freshly
- * set active organisation may take a moment to become visible. `router.refresh()`
- * after navigation is enough to pick it up — we do not try to bust the cache.
+ * The selection endpoint updates the authoritative session row. The auth
+ * configuration does not cache session data in the browser, so the following
+ * navigation observes the new organisation immediately.
  */
 
 /** One selectable organisation, as returned by the memberships read. */

@@ -63,5 +63,17 @@ integration('development seed', () => {
         ),
       );
     expect(membershipRows).toEqual([{ id: expect.any(String), status: 'active' }]);
+
+    const assignedRoleRows = await db
+      .select({ slug: schema.roles.slug })
+      .from(schema.membershipRoles)
+      .innerJoin(schema.roles, drizzle.eq(schema.membershipRoles.roleId, schema.roles.id))
+      .where(
+        drizzle.eq(schema.membershipRoles.membershipId, membershipRows[0]?.id ?? ''),
+      );
+    expect(assignedRoleRows.map(({ slug }) => slug).sort()).toEqual([
+      'intake-officer',
+      'organisation-admin',
+    ]);
   });
 });

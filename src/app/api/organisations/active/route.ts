@@ -18,10 +18,9 @@ const SESSION_DATA_COOKIE_NAMES = [
  * so a failed membership check collapses to a generic 403 that reveals nothing
  * about whether the organisation exists.
  *
- * NOTE: Better Auth caches the session in a cookie for ~60s, so the new active
- * organisation may take a moment to be visible to subsequent reads. The client
- * calls `router.refresh()` after navigating, which is enough — we do not fight
- * the cache here.
+ * The auth configuration reads session state from the database on each request,
+ * so the next navigation observes the new organisation immediately. Expiring
+ * legacy cache cookies below also makes upgrades from older sessions safe.
  */
 const bodySchema = z.object({
   organisationId: z.uuid(),
@@ -43,10 +42,8 @@ export async function POST(request: NextRequest): Promise<Response> {
     });
 
     const response = NextResponse.json({ ok: true });
-    // Better Auth's cookie cache may still describe the old session for up to
-    // 60 seconds. The active organisation has changed in the database, so
-    // expire both development and secure-production cache names now. The next
-    // navigation will re-read the authoritative session row immediately.
+    // Older deployments may have issued a cached session-data cookie. Expire
+    // both development and secure-production names during the transition.
     for (const name of SESSION_DATA_COOKIE_NAMES) {
       response.cookies.set({
         name,

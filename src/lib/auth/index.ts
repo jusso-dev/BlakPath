@@ -126,12 +126,25 @@ export const auth = betterAuth({
    *   request without extending trust beyond a minute.
    */
   session: {
+    additionalFields: {
+      // This is written only by the verified organisation-selection service.
+      // Exposing it in the server session lets the tenancy layer re-verify it
+      // on every request; clients cannot submit or alter it through Better Auth.
+      activeOrganisationId: {
+        type: 'string',
+        required: false,
+        input: false,
+      },
+    },
     expiresIn: 60 * 60 * 24 * 7,
     updateAge: 60 * 60 * 24,
     freshAge: 60 * 15,
     cookieCache: {
-      enabled: true,
-      maxAge: 60,
+      // Active organisation selection is server-authorised state. Keeping it in
+      // a short-lived browser cache made a successful organisation switch look
+      // like it had failed until the cache expired. Read the session row on
+      // each request instead, so a role or tenant change takes effect at once.
+      enabled: false,
     },
   },
 

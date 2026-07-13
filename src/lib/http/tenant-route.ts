@@ -1,6 +1,11 @@
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { requireSession, UnauthenticatedError } from '@/lib/auth/session';
+import { ZodError } from 'zod';
+import {
+  requireSession,
+  StepUpRequiredError,
+  UnauthenticatedError,
+} from '@/lib/auth/session';
 import { withTenant } from '@/lib/tenancy/with-tenant';
 import { TenantContextError, type TenantContext } from '@/lib/tenancy/context';
 import { AuthorizationError } from '@/lib/permissions/errors';
@@ -60,8 +65,14 @@ export function toErrorResponse(error: unknown): NextResponse {
   if (error instanceof UnauthenticatedError) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
+  if (error instanceof StepUpRequiredError) {
+    return NextResponse.json({ error: 'Re-authentication required' }, { status: 401 });
+  }
   if (error instanceof NoActiveOrganisationError) {
     return NextResponse.json({ error: 'No active organisation' }, { status: 409 });
+  }
+  if (error instanceof ZodError) {
+    return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
   if (error instanceof AuthorizationError || error instanceof TenantContextError) {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 });

@@ -9,6 +9,7 @@ import {
   useDroppable,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
 } from '@dnd-kit/core';
 import {
@@ -79,9 +80,16 @@ function formatDue(dueAt: string): string {
   });
 }
 
-function TaskCard({ task }: { task: BoardTask }) {
+function TaskCard({
+  task,
+  onMove,
+}: {
+  task: BoardTask;
+  onMove: (taskId: string, status: BoardColumn) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: task.id });
+  const moveId = `move-task-${task.id}`;
 
   return (
     <li
@@ -89,36 +97,62 @@ function TaskCard({ task }: { task: BoardTask }) {
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn(
         'border-border bg-surface flex flex-col gap-2 rounded-md border p-3 text-left shadow-sm',
-        'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
         isDragging && 'opacity-60',
       )}
-      {...attributes}
-      {...listeners}
     >
-      <p className="text-primary text-sm font-medium">{task.title}</p>
-      <div className="flex flex-wrap items-center gap-2">
-        <span
-          className={cn(
-            'rounded-full px-2 py-0.5 text-xs font-medium',
-            PRIORITY_CHIP[task.priority],
-          )}
-        >
-          {PRIORITY_LABELS[task.priority]}
-        </span>
-        {task.assigneeName ? (
-          <span className="text-muted-foreground text-xs">{task.assigneeName}</span>
-        ) : null}
-        {task.dueAt ? (
-          <span className="text-muted-foreground text-xs">
-            Due {formatDue(task.dueAt)}
+      <div
+        {...attributes}
+        {...listeners}
+        className="focus-visible:ring-ring focus-visible:ring-offset-background cursor-grab rounded-sm focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none active:cursor-grabbing"
+      >
+        <p className="text-primary text-sm font-medium">{task.title}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <span
+            className={cn(
+              'rounded-full px-2 py-0.5 text-xs font-medium',
+              PRIORITY_CHIP[task.priority],
+            )}
+          >
+            {PRIORITY_LABELS[task.priority]}
           </span>
-        ) : null}
+          {task.assigneeName ? (
+            <span className="text-muted-foreground text-xs">{task.assigneeName}</span>
+          ) : null}
+          {task.dueAt ? (
+            <span className="text-muted-foreground text-xs">
+              Due {formatDue(task.dueAt)}
+            </span>
+          ) : null}
+        </div>
       </div>
+      <Label htmlFor={moveId} className="sr-only">
+        Move {task.title} to
+      </Label>
+      <select
+        id={moveId}
+        value={task.status}
+        onChange={(event) => onMove(task.id, event.target.value as BoardColumn)}
+        className="border-input bg-surface text-foreground mt-1 h-9 rounded-md border px-2 text-sm"
+      >
+        {BOARD_COLUMNS.map((status) => (
+          <option key={status} value={status}>
+            {COLUMN_LABELS[status]}
+          </option>
+        ))}
+      </select>
     </li>
   );
 }
 
-function Column({ status, tasks }: { status: BoardColumn; tasks: BoardTask[] }) {
+function Column({
+  status,
+  tasks,
+  onMove,
+}: {
+  status: BoardColumn;
+  tasks: BoardTask[];
+  onMove: (taskId: string, status: BoardColumn) => void;
+}) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
 
   return (
@@ -140,7 +174,7 @@ function Column({ status, tasks }: { status: BoardColumn; tasks: BoardTask[] }) 
       >
         <ul className="flex min-h-16 flex-col gap-2">
           {tasks.map((task) => (
-            <TaskCard key={task.id} task={task} />
+            <TaskCard key={task.id} task={task} onMove={onMove} />
           ))}
         </ul>
       </SortableContext>
@@ -173,6 +207,42 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
   );
 
   const columns = useMemo(() => groupByColumn(tasks), [tasks]);
+
+  const announcements: Announcements = {
+    onDragStart({ active }) {
+      const task = tasks.find((candidate) => candidate.id === String(active.id));
+      if (!task) return 'Task picked up.';
+      return `${task.title} picked up from ${COLUMN_LABELS[task.status]}. Use the arrow keys to move it, Space to drop it, or Escape to cancel.`;
+    },
+    onDragOver({ active, over }) {
+      if (!over) return undefined;
+      const task = tasks.find((candidate) => candidate.id === String(active.id));
+      const targetId = String(over.id);
+      const targetColumn = (BOARD_COLUMNS as readonly string[]).includes(targetId)
+        ? (targetId as BoardColumn)
+        : tasks.find((candidate) => candidate.id === targetId)?.status;
+      if (!task || !targetColumn) return undefined;
+      return `${task.title} is over ${COLUMN_LABELS[targetColumn]}.`;
+    },
+    onDragEnd({ active, over }) {
+      const task = tasks.find((candidate) => candidate.id === String(active.id));
+      if (!task) return 'Task dropped.';
+      if (!over) return `${task.title} was not moved.`;
+      const targetId = String(over.id);
+      const targetColumn = (BOARD_COLUMNS as readonly string[]).includes(targetId)
+        ? (targetId as BoardColumn)
+        : tasks.find((candidate) => candidate.id === targetId)?.status;
+      return targetColumn
+        ? `${task.title} was moved to ${COLUMN_LABELS[targetColumn]}.`
+        : `${task.title} was dropped.`;
+    },
+    onDragCancel({ active }) {
+      const task = tasks.find((candidate) => candidate.id === String(active.id));
+      return task
+        ? `Moving ${task.title} was cancelled.`
+        : 'Moving the task was cancelled.';
+    },
+  };
 
   /** Which column a given task id currently sits in. */
   function columnOf(id: string): BoardColumn | undefined {
@@ -295,6 +365,22 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
     }
   }
 
+  function moveTaskWithControl(taskId: string, status: BoardColumn) {
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task || task.status === status) return;
+    const previous = tasks;
+    const destinationTail = tasks
+      .filter((candidate) => candidate.id !== taskId && candidate.status === status)
+      .at(-1)?.id;
+    setTasks((current) =>
+      current.map((candidate) =>
+        candidate.id === taskId ? { ...candidate, status } : candidate,
+      ),
+    );
+    setMessage(`${task.title} moved to ${COLUMN_LABELS[status]}.`);
+    void persistMove(taskId, status, destinationTail, undefined, previous);
+  }
+
   return (
     <div className="flex flex-col gap-3">
       <div className="border-border bg-surface flex flex-wrap items-center justify-between gap-3 rounded-lg border p-3">
@@ -353,13 +439,20 @@ export function TaskBoard({ initialTasks }: { initialTasks: BoardTask[] }) {
         </p>
       ) : null}
       <DndContext
+        id="task-board-dnd"
+        accessibility={{ announcements }}
         sensors={sensors}
         collisionDetection={closestCorners}
         onDragEnd={onDragEnd}
       >
         <div className="flex flex-col gap-4 md:flex-row md:items-start">
           {BOARD_COLUMNS.map((status) => (
-            <Column key={status} status={status} tasks={columns[status]} />
+            <Column
+              key={status}
+              status={status}
+              tasks={columns[status]}
+              onMove={moveTaskWithControl}
+            />
           ))}
         </div>
       </DndContext>

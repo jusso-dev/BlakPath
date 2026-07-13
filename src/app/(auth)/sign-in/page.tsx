@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRef, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { AuthCard } from '@/components/auth/auth-card';
 import { Alert } from '@/components/ui/alert';
@@ -36,6 +36,10 @@ export default function SignInPage() {
 
   const emailRef = useRef<HTMLInputElement>(null);
 
+  useEffect(() => {
+    if (error) emailRef.current?.focus();
+  }, [error]);
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setError(null);
@@ -51,7 +55,6 @@ export default function SignInPage() {
     if (signInError) {
       setError(GENERIC_ERROR);
       setPending(false);
-      emailRef.current?.focus();
       return;
     }
 

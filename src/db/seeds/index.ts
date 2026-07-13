@@ -1,5 +1,5 @@
 import 'dotenv/config';
-import { eq, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { hash as argon2Hash } from '@node-rs/argon2';
 import { uuidv7 } from 'uuidv7';
 import { db, sqlClient } from '@/db/client';
@@ -106,16 +106,6 @@ async function seedDevBootstrap(roleIdBySlug: Map<string, string>): Promise<void
   const adminEmail = 'admin@blakpath.local';
   const devPassword = 'blakpath-dev-admin-2026';
 
-  const existingUser = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(eq(users.email, adminEmail))
-    .limit(1);
-  if (existingUser[0]) {
-    console.info('[seed] developer bootstrap already present — skipping');
-    return;
-  }
-
   const orgId = uuidv7();
   await db
     .insert(organisations)
@@ -136,44 +126,71 @@ async function seedDevBootstrap(roleIdBySlug: Map<string, string>): Promise<void
     .limit(1);
   const organisationId = orgRow[0]?.id ?? orgId;
 
-  const userId = uuidv7();
-  await db.insert(users).values({
-    id: userId,
-    name: 'Dev Admin',
-    email: adminEmail,
-    emailVerified: true,
-  });
+  const [existingUser] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.email, adminEmail))
+    .limit(1);
+  const userId = existingUser?.id ?? uuidv7();
+  if (!existingUser) {
+    await db.insert(users).values({
+      id: userId,
+      name: 'Dev Admin',
+      email: adminEmail,
+      emailVerified: true,
+    });
 
-  await db.insert(accounts).values({
-    id: uuidv7(),
-    userId,
-    providerId: 'credential',
-    accountId: userId,
-    password: await argon2Hash(devPassword, ARGON2_OPTIONS),
-  });
-
-  const membershipId = uuidv7();
-  await db.insert(memberships).values({
-    id: membershipId,
-    organisationId,
-    userId,
-    status: 'active',
-  });
-
-  const adminRoleId = roleIdBySlug.get('organisation-admin');
-  if (adminRoleId) {
-    await db.insert(membershipRoles).values({
+    await db.insert(accounts).values({
       id: uuidv7(),
-      membershipId,
-      roleId: adminRoleId,
+      userId,
+      providerId: 'credential',
+      accountId: userId,
+      password: await argon2Hash(devPassword, ARGON2_OPTIONS),
     });
   }
 
-  console.info('[seed] developer bootstrap created:');
+  const [existingMembership] = await db
+    .select({ id: memberships.id })
+    .from(memberships)
+    .where(
+      and(eq(memberships.organisationId, organisationId), eq(memberships.userId, userId)),
+    )
+    .limit(1);
+  const membershipId = existingMembership?.id ?? uuidv7();
+  if (!existingMembership) {
+    await db.insert(memberships).values({
+      id: membershipId,
+      organisationId,
+      userId,
+      status: 'active',
+    });
+  } else {
+    await db
+      .update(memberships)
+      .set({ status: 'active' })
+      .where(eq(memberships.id, membershipId));
+  }
+
+  // The development user represents a staff administrator who can exercise the
+  // signed-in case workflow. Production memberships are assigned explicitly by
+  // an organisation administrator, never by this bootstrap path.
+  for (const slug of ['organisation-admin', 'intake-officer'] as const) {
+    const roleId = roleIdBySlug.get(slug);
+    if (roleId) {
+      await db
+        .insert(membershipRoles)
+        .values({ id: uuidv7(), membershipId, roleId })
+        .onConflictDoNothing({
+          target: [membershipRoles.membershipId, membershipRoles.roleId],
+        });
+    }
+  }
+
+  console.info('[seed] developer bootstrap ensured:');
   console.info(`         org:      dev-org (${organisationId})`);
   console.info(`         login:    ${adminEmail}`);
   console.info(`         password: ${devPassword}`);
-  console.info('         role:     organisation-admin');
+  console.info('         roles:    organisation-admin, intake-officer');
 }
 
 async function main(): Promise<void> {
