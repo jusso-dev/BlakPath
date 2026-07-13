@@ -4,6 +4,7 @@ import {
   ADMIN_EMAIL,
   APPLICANT_EMAIL,
   APPLICANT_PASSWORD,
+  isolateSignInClient,
   signInAndSelectOrganisation,
 } from './helpers/auth';
 
@@ -47,6 +48,7 @@ async function expectNoSeriousAccessibilityViolations(page: Page): Promise<void>
 test('protected routes reject anonymous access and sign-in errors stay generic', async ({
   page,
 }) => {
+  await isolateSignInClient(page);
   const apiResponse = await page.request.get('/api/applications');
   expect(apiResponse.status()).toBe(401);
   await expect(apiResponse.json()).resolves.toEqual({ error: 'Unauthorized' });
@@ -174,6 +176,7 @@ test('a linked applicant uploads evidence into quarantine without download acces
   if (!baseURL) throw new Error('Playwright baseURL is required for this test.');
   const applicantContext = await browser.newContext({ baseURL });
   const applicantPage = await applicantContext.newPage();
+  await isolateSignInClient(applicantPage);
   await applicantPage.goto('/sign-in');
   await applicantPage.getByLabel('Email').fill(APPLICANT_EMAIL);
   await applicantPage.getByLabel('Password').fill(APPLICANT_PASSWORD);

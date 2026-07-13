@@ -9,7 +9,29 @@ let selectedAdminCookies:
   | Awaited<ReturnType<ReturnType<Page['context']>['cookies']>>
   | undefined;
 
+/**
+ * Give each interactive sign-in its own documentation-only client address.
+ *
+ * The acceptance suite signs in several independent browser contexts in quick
+ * succession. On a CI runner they otherwise share localhost's five-attempt
+ * production-style rate-limit bucket and later, valid sign-ins are rejected.
+ * A unique RFC 3849 address keeps rate limiting enabled while modelling the
+ * independent clients these contexts represent.
+ */
+export async function isolateSignInClient(page: Page): Promise<void> {
+  const groups = globalThis.crypto
+    .randomUUID()
+    .replaceAll('-', '')
+    .slice(0, 24)
+    .match(/.{4}/g);
+  if (!groups) throw new Error('Unable to generate an isolated E2E client address.');
+  await page.context().setExtraHTTPHeaders({
+    'x-forwarded-for': `2001:db8:${groups.join(':')}`,
+  });
+}
+
 export async function signIn(page: Page): Promise<void> {
+  await isolateSignInClient(page);
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill(ADMIN_EMAIL);
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);

@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test';
 import {
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
+  isolateSignInClient,
   selectDevelopmentOrganisation,
   signInAndSelectOrganisation,
 } from './helpers/auth';
@@ -10,6 +11,7 @@ const STAFF_EMAIL = 'staff@blakpath.local';
 const STAFF_PASSWORD = 'blakpath-dev-staff-2026';
 
 async function signInAs(page: Page, email: string, password: string): Promise<void> {
+  await isolateSignInClient(page);
   await page.goto('/sign-in');
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
