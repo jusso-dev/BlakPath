@@ -105,6 +105,63 @@ function CountRow({ label, count }: { label: string; count: number }): ReactNode
   );
 }
 
+/** A compact operational metric, used for the at-a-glance strip. */
+function MetricCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: number;
+  detail: string;
+}): ReactNode {
+  return (
+    <Card>
+      <CardContent className="flex min-h-32 flex-col justify-between p-4 sm:p-5">
+        <p className="text-muted-foreground text-sm font-medium">{label}</p>
+        <p className="text-3xl font-semibold tracking-tight tabular-nums">{value}</p>
+        <p className="text-muted-foreground text-xs">{detail}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** A readable bar chart whose labels and exact values remain available in text. */
+function HorizontalBarChart({
+  title,
+  values,
+  labels,
+}: {
+  title: string;
+  values: ReadonlyArray<readonly [string, number]>;
+  labels: Record<string, string>;
+}): ReactNode {
+  const largest = Math.max(1, ...values.map(([, value]) => value));
+  return (
+    <div
+      role="img"
+      aria-label={`${title}: ${values.map(([key, value]) => `${humanise(key, labels)} ${value}`).join(', ')}`}
+    >
+      <ul className="flex flex-col gap-3">
+        {values.map(([key, value]) => (
+          <li key={key} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1.5">
+            <span className="text-sm font-medium">{humanise(key, labels)}</span>
+            <span className="text-sm font-semibold tabular-nums">{value}</span>
+            <div className="bg-surface-muted col-span-2 h-2 overflow-hidden rounded-full">
+              <div
+                className="bg-primary h-full rounded-full transition-[width] duration-200 ease-out"
+                style={{
+                  width: `${Math.max(value > 0 ? 6 : 0, (value / largest) * 100)}%`,
+                }}
+              />
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 /** A single sortable widget shell with a drag handle. */
 function SortableWidget({
   id,
@@ -217,6 +274,21 @@ export function StatDashboard({
     () => Object.entries(counts.tasksByColumn),
     [counts.tasksByColumn],
   );
+  const totalApplications = useMemo(
+    () => applicationStatuses.reduce((total, [, value]) => total + value, 0),
+    [applicationStatuses],
+  );
+  const activeApplications = useMemo(
+    () =>
+      applicationStatuses
+        .filter(([status]) => !['decided', 'withdrawn', 'closed'].includes(status))
+        .reduce((total, [, value]) => total + value, 0),
+    [applicationStatuses],
+  );
+  const attentionTotal = useMemo(
+    () => attention.reduce((total, item) => total + item.count, 0),
+    [attention],
+  );
 
   const widgets: Record<WidgetId, { title: string; body: ReactNode }> = {
     attention: {
@@ -247,15 +319,11 @@ export function StatDashboard({
         applicationStatuses.length === 0 ? (
           <p className="text-muted-foreground text-sm">No applications yet.</p>
         ) : (
-          <ul className="flex flex-col gap-1.5">
-            {applicationStatuses.map(([status, n]) => (
-              <CountRow
-                key={status}
-                label={humanise(status, APPLICATION_STATUS_LABELS)}
-                count={n}
-              />
-            ))}
-          </ul>
+          <HorizontalBarChart
+            title="Applications by workflow stage"
+            values={applicationStatuses}
+            labels={APPLICATION_STATUS_LABELS}
+          />
         ),
     },
     evidence: {
@@ -291,30 +359,58 @@ export function StatDashboard({
     tasks: {
       title: 'Task board',
       body: (
-        <ul className="flex flex-col gap-1.5">
+        <div className="flex flex-col gap-4">
           {taskColumns.length === 0 ? (
-            <li className="text-muted-foreground text-sm">No tasks yet.</li>
+            <p className="text-muted-foreground text-sm">No tasks yet.</p>
           ) : (
-            taskColumns.map(([column, n]) => (
-              <CountRow
-                key={column}
-                label={humanise(column, TASK_COLUMN_LABELS)}
-                count={n}
-              />
-            ))
+            <HorizontalBarChart
+              title="Tasks by board column"
+              values={taskColumns}
+              labels={TASK_COLUMN_LABELS}
+            />
           )}
-          <CountRow label="Overdue" count={counts.tasksOverdue} />
-        </ul>
+          <div className="border-border bg-status-warning-surface/50 flex items-center justify-between gap-3 rounded-md border px-3 py-2 text-sm">
+            <span className="font-medium">Overdue tasks</span>
+            <span className="font-semibold tabular-nums">{counts.tasksOverdue}</span>
+          </div>
+        </div>
       ),
     },
   };
 
   return (
     <section aria-label="Organisation stats" className="flex flex-col gap-4">
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <p className="text-muted-foreground text-sm">Current workload</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">At a glance</h2>
+        </div>
         <Button type="button" variant="ghost" size="sm" onClick={resetLayout}>
           Reset layout
         </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <MetricCard
+          label="Applications"
+          value={totalApplications}
+          detail={`${activeApplications} currently active`}
+        />
+        <MetricCard
+          label="Needs attention"
+          value={attentionTotal}
+          detail="Items across active queues"
+        />
+        <MetricCard
+          label="Upcoming meetings"
+          value={counts.meetingsUpcoming}
+          detail="Scheduled ahead"
+        />
+        <MetricCard
+          label="Overdue tasks"
+          value={counts.tasksOverdue}
+          detail="Review on the work board"
+        />
       </div>
 
       <DndContext

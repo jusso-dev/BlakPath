@@ -78,6 +78,32 @@ export function StaffShell({
             <span className="text-primary">Blak</span>Path
           </Link>
 
+          <nav
+            aria-label="Primary navigation"
+            className="hidden flex-1 justify-center gap-1 md:flex"
+          >
+            {navigation.map((item) => {
+              const Icon = item.icon;
+              const currentPath = isCurrentPath(pathname, item.href);
+              return (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  aria-current={currentPath ? 'page' : undefined}
+                  className={cn(
+                    'flex shrink-0 items-center gap-2 rounded-md px-3 py-2 text-sm font-semibold transition-colors focus-visible:outline-none',
+                    currentPath
+                      ? 'bg-surface-muted text-foreground'
+                      : 'text-muted-foreground hover:bg-surface-muted hover:text-foreground',
+                  )}
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
           <div className="flex min-w-0 items-center justify-end gap-1 sm:gap-2">
             <DropdownMenu.Root>
               <DropdownMenu.Trigger asChild>
@@ -139,7 +165,7 @@ export function StaffShell({
 
         <nav
           aria-label="Primary navigation"
-          className="-mx-1 flex gap-1 overflow-x-auto pb-2"
+          className="-mx-1 flex gap-1 overflow-x-auto pb-2 md:hidden"
         >
           {navigation.map((item) => {
             const Icon = item.icon;
