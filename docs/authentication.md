@@ -51,6 +51,21 @@ account that has not completed MFA enrolment is routed to enrolment, not to the
 workspace. Applicants using the public application flow are encouraged, but not
 forced, to enable MFA. Platform operators must use MFA unconditionally.
 
+## Organisation invitations
+
+- An authorised organisation administrator creates an invitation for one email
+  address, one initial role and one organisation. The browser never supplies the
+  organisation during acceptance.
+- `membership_invitations` stores only a SHA-256 hash of the single-use token.
+  Resending rotates the token and invalidates the previous link; cancellation,
+  acceptance and expiry are retained as access history.
+- Acceptance requires a signed-in account with the same verified email address.
+  Only then is an active membership and role created for the invitation's
+  organisation. The current session is moved into that verified tenant context.
+- Invitation, acceptance, cancellation, role, suspension and revocation attempts
+  are permission-checked and audited, including policy denials. Self-lockout and
+  removal or downgrade of the final active organisation administrator are denied.
+
 ## Session management
 
 - Sessions are server-side (`sessions` table), keyed by a unique `token`, with an

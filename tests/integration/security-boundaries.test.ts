@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 /**
@@ -19,6 +19,7 @@ async function loadRuntime() {
     evidence,
     decisions,
     forms,
+    memberships,
     audit,
   ] = await Promise.all([
     import('@/db/client'),
@@ -29,6 +30,7 @@ async function loadRuntime() {
     import('@/domains/evidence'),
     import('@/domains/decisions'),
     import('@/domains/forms'),
+    import('@/domains/memberships'),
     import('@/domains/audit'),
   ]);
 
@@ -41,6 +43,7 @@ async function loadRuntime() {
     evidence,
     decisions,
     forms,
+    memberships,
     audit,
   };
 }
@@ -53,6 +56,8 @@ integration('database-backed security boundaries', () => {
   let organisationA: string;
   let organisationB: string;
   let userId: string;
+  let invitedUserId: string;
+  let invitedUserEmail: string;
   let contextA: TenantContext;
   let contextB: TenantContext;
 
@@ -61,16 +66,26 @@ integration('database-backed security boundaries', () => {
     organisationA = randomUUID();
     organisationB = randomUUID();
     userId = randomUUID();
+    invitedUserId = randomUUID();
     const membershipA = randomUUID();
     const membershipB = randomUUID();
     const suffix = randomUUID().slice(0, 8);
 
-    await runtime.db.insert(runtime.schema.users).values({
-      id: userId,
-      name: 'Integration Test Staff Member',
-      email: `integration-${suffix}@example.test`,
-      emailVerified: true,
-    });
+    invitedUserEmail = `invited-${suffix}@example.test`;
+    await runtime.db.insert(runtime.schema.users).values([
+      {
+        id: userId,
+        name: 'Integration Test Staff Member',
+        email: `integration-${suffix}@example.test`,
+        emailVerified: true,
+      },
+      {
+        id: invitedUserId,
+        name: 'Invited Integration Staff Member',
+        email: invitedUserEmail,
+        emailVerified: true,
+      },
+    ]);
     await runtime.db.insert(runtime.schema.organisations).values([
       {
         id: organisationA,
@@ -111,6 +126,7 @@ integration('database-backed security boundaries', () => {
       'decision:propose',
       'decision:vote',
       'decision:finalise',
+      'membership:manage',
     ]);
     const baseContext = {
       userId,
@@ -333,6 +349,166 @@ integration('database-backed security boundaries', () => {
       .where(eq(runtime.schema.formInvitations.id, valid.invitation.id));
     expect(storedInvitation?.tokenHash).toMatch(/^[a-f0-9]{64}$/);
     expect(storedInvitation?.tokenHash).not.toBe(valid.token);
+  });
+
+  it('binds membership invitations to one tenant and one verified email', async () => {
+    const { and, eq } = await import('drizzle-orm');
+    const [role] = await runtime.db
+      .select({ id: runtime.schema.roles.id, name: runtime.schema.roles.name })
+      .from(runtime.schema.roles)
+      .where(eq(runtime.schema.roles.slug, 'intake-officer'))
+      .limit(1);
+    expect(role).toBeTruthy();
+    if (!role) throw new Error('Expected the seeded intake-officer role.');
+
+    const [administratorRole] = await runtime.db
+      .select({ id: runtime.schema.roles.id })
+      .from(runtime.schema.roles)
+      .where(eq(runtime.schema.roles.slug, 'organisation-admin'))
+      .limit(1);
+    if (!administratorRole) {
+      throw new Error('Expected the seeded organisation-admin role.');
+    }
+    const lastAdministratorUserId = randomUUID();
+    const lastAdministratorMembershipId = randomUUID();
+    await runtime.db.insert(runtime.schema.users).values({
+      id: lastAdministratorUserId,
+      name: 'Last Integration Administrator',
+      email: `last-admin-${randomUUID()}@example.test`,
+      emailVerified: true,
+    });
+    await runtime.db.insert(runtime.schema.memberships).values({
+      id: lastAdministratorMembershipId,
+      organisationId: organisationA,
+      userId: lastAdministratorUserId,
+      status: 'active',
+    });
+    await runtime.db.insert(runtime.schema.membershipRoles).values({
+      id: randomUUID(),
+      membershipId: lastAdministratorMembershipId,
+      roleId: administratorRole.id,
+    });
+    await expect(
+      runtime.tenancy.runWithTenantContext(contextA, () =>
+        runtime.memberships.changeMemberRole(lastAdministratorMembershipId, role.id),
+      ),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+    await expect(
+      runtime.tenancy.runWithTenantContext(contextA, () =>
+        runtime.memberships.changeMemberStatus(lastAdministratorMembershipId, 'revoked'),
+      ),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+
+    const invitationId = randomUUID();
+    const token = `membership-${randomUUID()}-${randomUUID()}`;
+    await runtime.db.insert(runtime.schema.membershipInvitations).values({
+      id: invitationId,
+      organisationId: organisationA,
+      email: invitedUserEmail,
+      roleId: role.id,
+      tokenHash: createHash('sha256').update(token).digest('hex'),
+      status: 'pending',
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    const preview = await runtime.memberships.getMembershipInvitationPreview(token);
+    expect(preview).toMatchObject({
+      organisationName: 'Integration Organisation A',
+      roleName: role.name,
+    });
+    expect(preview.emailHint).not.toBe(invitedUserEmail);
+
+    const listedInA = await runtime.tenancy.runWithTenantContext(contextA, () =>
+      runtime.memberships.listMembershipInvitations(),
+    );
+    const listedInB = await runtime.tenancy.runWithTenantContext(contextB, () =>
+      runtime.memberships.listMembershipInvitations(),
+    );
+    expect(listedInA.map(({ id }) => id)).toContain(invitationId);
+    expect(listedInB.map(({ id }) => id)).not.toContain(invitationId);
+
+    await expect(
+      runtime.tenancy.runWithTenantContext(contextB, () =>
+        runtime.memberships.revokeMembershipInvitation(invitationId),
+      ),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+
+    await expect(
+      runtime.memberships.acceptMembershipInvitation({
+        token,
+        userId: invitedUserId,
+        userEmail: 'different@example.test',
+        emailVerified: true,
+        sessionId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+
+    await expect(
+      runtime.memberships.acceptMembershipInvitation({
+        token,
+        userId: invitedUserId,
+        userEmail: invitedUserEmail,
+        emailVerified: true,
+        sessionId: randomUUID(),
+      }),
+    ).resolves.toMatchObject({ organisationId: organisationA });
+    await expect(
+      runtime.memberships.acceptMembershipInvitation({
+        token,
+        userId: invitedUserId,
+        userEmail: invitedUserEmail,
+        emailVerified: true,
+        sessionId: randomUUID(),
+      }),
+    ).rejects.toMatchObject({ code: 'POLICY_DENIED' });
+
+    const [acceptedMembership] = await runtime.db
+      .select({
+        organisationId: runtime.schema.memberships.organisationId,
+        status: runtime.schema.memberships.status,
+        roleId: runtime.schema.membershipRoles.roleId,
+      })
+      .from(runtime.schema.memberships)
+      .innerJoin(
+        runtime.schema.membershipRoles,
+        eq(runtime.schema.membershipRoles.membershipId, runtime.schema.memberships.id),
+      )
+      .where(
+        and(
+          eq(runtime.schema.memberships.userId, invitedUserId),
+          eq(runtime.schema.memberships.organisationId, organisationA),
+        ),
+      );
+    expect(acceptedMembership).toEqual({
+      organisationId: organisationA,
+      status: 'active',
+      roleId: role.id,
+    });
+
+    const invitationAudit = await runtime.db
+      .select({
+        organisationId: runtime.schema.auditEvents.organisationId,
+        result: runtime.schema.auditEvents.result,
+      })
+      .from(runtime.schema.auditEvents)
+      .where(eq(runtime.schema.auditEvents.action, 'membership.invitation_accepted'));
+    expect(invitationAudit).toEqual(
+      expect.arrayContaining([
+        { organisationId: organisationA, result: 'denied' },
+        { organisationId: organisationA, result: 'success' },
+      ]),
+    );
+    const deniedCrossTenant = await runtime.db
+      .select({ result: runtime.schema.auditEvents.result })
+      .from(runtime.schema.auditEvents)
+      .where(
+        and(
+          eq(runtime.schema.auditEvents.organisationId, organisationB),
+          eq(runtime.schema.auditEvents.action, 'membership.invitation_revoked'),
+          eq(runtime.schema.auditEvents.resourceId, invitationId),
+        ),
+      );
+    expect(deniedCrossTenant).toEqual([{ result: 'denied' }]);
   });
 
   it('appends and verifies an intact tenant audit chain', async () => {

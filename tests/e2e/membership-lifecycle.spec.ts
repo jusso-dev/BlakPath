@@ -16,35 +16,74 @@ async function signInAs(page: Page, email: string, password: string): Promise<vo
   await page.getByLabel('Email').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/select-organisation$/);
+  await expect(page).toHaveURL(/\/select-organisation$/, { timeout: 30_000 });
 }
 
-async function assignRole(page: Page, role: string): Promise<void> {
-  await page.getByLabel('Their account email').fill(STAFF_EMAIL);
-  await page.getByLabel('Role').selectOption({ label: role });
-  await page.getByRole('button', { name: 'Add staff member' }).click();
-  await expect(
-    page.getByText('Staff member added. Their access is now active.'),
-  ).toBeVisible();
-  const member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL });
-  await expect(member).toContainText(role);
-  await expect(member).toContainText('active');
-}
-
-test('role changes, suspension, restoration and revocation apply on the next request', async ({
+test('invite acceptance, role changes and revocation remain tenant-bound', async ({
   browser,
   page,
 }) => {
-  test.setTimeout(90_000);
+  test.setTimeout(120_000);
   await signInAndSelectOrganisation(page);
+  const currentAccess = await page.request.get('/api/memberships');
+  expect(currentAccess.status()).toBe(200);
+  const currentMembers = (await currentAccess.json()) as {
+    members: Array<{ id: string; email: string; status: string }>;
+  };
+  const existingStaff = currentMembers.members.find(
+    (member) => member.email === STAFF_EMAIL && member.status !== 'revoked',
+  );
+  if (existingStaff) {
+    const resetAccess = await page.request.patch(`/api/memberships/${existingStaff.id}`, {
+      data: { operation: 'status', status: 'revoked' },
+    });
+    expect(resetAccess.status()).toBe(200);
+  }
   await page.goto('/settings/people');
-  await assignRole(page, 'Committee Chair');
+  await page.getByLabel('Email address').fill(STAFF_EMAIL);
+  await page.getByLabel('Initial role').selectOption({ label: 'Committee Chair' });
+  await page.getByRole('button', { name: 'Send invitation' }).click();
+  await expect(page.getByText('Invitation created.')).toBeVisible();
+  const firstInvitationUrl = await page.getByLabel('Latest invitation link').inputValue();
+  let invitation = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).first();
+  await expect(invitation).toContainText('Pending');
+
+  await invitation.getByRole('button', { name: 'Resend' }).click();
+  await expect(page.getByText('A new invitation link was created.')).toBeVisible();
+  const invitationUrl = await page.getByLabel('Latest invitation link').inputValue();
+  expect(invitationUrl).not.toBe(firstInvitationUrl);
 
   const staffContext = await browser.newContext();
   const staffPage = await staffContext.newPage();
   try {
-    await signInAs(staffPage, STAFF_EMAIL, STAFF_PASSWORD);
-    await selectDevelopmentOrganisation(staffPage);
+    await isolateSignInClient(staffPage);
+    await staffPage.goto(firstInvitationUrl);
+    await expect(
+      staffPage.getByText('This invitation is no longer available'),
+    ).toBeVisible();
+
+    await staffPage.goto(invitationUrl);
+    await expect(
+      staffPage.getByRole('heading', {
+        name: 'Join BlakPath Development Organisation',
+      }),
+    ).toBeVisible();
+    await staffPage.getByRole('link', { name: 'Sign in' }).click();
+    await staffPage.getByLabel('Email').fill(STAFF_EMAIL);
+    await staffPage.getByLabel('Password').fill(STAFF_PASSWORD);
+    await staffPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+    await expect(staffPage).toHaveURL(invitationUrl, { timeout: 30_000 });
+    await staffPage
+      .getByRole('button', { name: 'Join BlakPath Development Organisation' })
+      .click();
+    await expect(staffPage).toHaveURL(/\/dashboard$/);
+
+    await page.reload();
+    invitation = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).first();
+    await expect(invitation).toContainText('Accepted');
+    let member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).last();
+    await expect(member).toContainText('Committee Chair');
+
     await staffPage.goto('/meetings');
     await expect(
       staffPage.getByRole('heading', { name: 'Committee meetings' }),
@@ -59,23 +98,36 @@ test('role changes, suspension, restoration and revocation apply on the next req
     ).toBeVisible();
     expect((await staffPage.request.get('/api/memberships')).status()).toBe(403);
 
+    const deniedInvite = await staffPage.request.post('/api/membership-invitations', {
+      data: {
+        email: 'outside@example.test',
+        roleId: '00000000-0000-4000-8000-000000000001',
+      },
+    });
+    expect(deniedInvite.status()).toBe(403);
+
     await page.goto('/settings/people');
-    await assignRole(page, 'Intake Officer');
+    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).last();
+    await member.getByLabel('Assigned role').selectOption({ label: 'Intake Officer' });
+    await member.getByRole('button', { name: 'Change role' }).click();
+    await expect(page.getByText('Role changed.')).toBeVisible();
+    await expect(member).toContainText('Intake Officer');
     expect((await staffPage.request.get('/api/calendar/meetings')).status()).toBe(403);
     expect((await staffPage.request.get('/api/applications')).status()).toBe(200);
 
-    let member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL });
+    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).last();
     await member.getByRole('button', { name: 'Suspend' }).click();
     await expect(member).toContainText('suspended');
     expect((await staffPage.request.get('/api/applications')).status()).toBe(403);
 
-    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL });
+    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).last();
     await member.getByRole('button', { name: 'Restore' }).click();
     await expect(member).toContainText('active');
     expect((await staffPage.request.get('/api/applications')).status()).toBe(200);
 
-    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL });
-    await member.getByRole('button', { name: 'Remove' }).click();
+    member = page.getByRole('listitem').filter({ hasText: STAFF_EMAIL }).last();
+    await member.getByRole('button', { name: 'Remove access' }).click();
+    await member.getByRole('button', { name: 'Confirm removal' }).click();
     await expect(member).toContainText('revoked');
     expect((await staffPage.request.get('/api/applications')).status()).toBe(403);
   } finally {

@@ -132,6 +132,7 @@ test('staff can select a tenant, validate input, and start and find an applicati
 test('organisation administrators can view access controls but cannot suspend themselves', async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await signInAndSelectOrganisation(page);
   await page.goto('/settings/people');
   await expect(page.getByRole('heading', { name: 'People and access' })).toBeVisible();
@@ -144,8 +145,12 @@ test('organisation administrators can view access controls but cannot suspend th
   const ownMembership = page.getByRole('listitem').filter({ hasText: ADMIN_EMAIL });
   await expect(ownMembership).toContainText('Organisation Administrator');
   await expect(ownMembership).toContainText('Intake Officer');
+  await ownMembership.getByLabel('Assigned role').selectOption({ label: 'Applicant' });
+  await ownMembership.getByRole('button', { name: 'Change role' }).click();
+  await expect(page.getByText('That role change could not be made.')).toBeVisible();
+  await expect(ownMembership).toContainText('Organisation Administrator');
   await ownMembership.getByRole('button', { name: 'Suspend' }).click();
-  await expect(page.getByText('You cannot change your own access here.')).toBeVisible();
+  await expect(page.getByText('That access change could not be made.')).toBeVisible();
   await expect(ownMembership).toContainText('active');
   await expectNoSeriousAccessibilityViolations(page);
 });
@@ -158,10 +163,12 @@ test('a linked applicant uploads evidence into quarantine without download acces
   test.setTimeout(60_000);
   await signInAndSelectOrganisation(page);
   await page.goto('/settings/people');
-  await page.getByLabel('Their account email').fill(APPLICANT_EMAIL);
-  await page.getByLabel('Role').selectOption({ label: 'Applicant' });
-  await page.getByRole('button', { name: 'Add staff member' }).click();
-  await expect(page.getByText('Staff member added.')).toBeVisible();
+  await page.getByLabel('Initial role').selectOption({ label: 'Applicant' });
+  const applicantRoleId = await page.getByLabel('Initial role').inputValue();
+  const addApplicant = await page.request.post('/api/memberships', {
+    data: { email: APPLICANT_EMAIL, roleId: applicantRoleId },
+  });
+  expect(addApplicant.status()).toBe(201);
 
   await page.goto('/applications');
   const stamp = Date.now();

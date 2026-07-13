@@ -8,7 +8,11 @@ import {
   uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { primaryId, refId, timestamps } from './_helpers';
-import { authorisationStatus, membershipStatus } from './enums';
+import {
+  authorisationStatus,
+  membershipInvitationStatus,
+  membershipStatus,
+} from './enums';
 import { users } from './auth';
 import { organisations } from './tenancy';
 
@@ -126,6 +130,46 @@ export const membershipRoles = pgTable(
 );
 
 /**
+ * A single-organisation invitation to join with one initial role.
+ *
+ * Only the SHA-256 hash of the bearer token is stored. Acceptance also checks
+ * the signed-in account's verified email, so possessing a forwarded link alone
+ * cannot grant access. Rows remain after acceptance/revocation for the
+ * organisation's access history.
+ */
+export const membershipInvitations = pgTable(
+  'membership_invitations',
+  {
+    id: primaryId(),
+    organisationId: refId('organisation_id')
+      .notNull()
+      .references(() => organisations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    roleId: refId('role_id')
+      .notNull()
+      .references(() => roles.id, { onDelete: 'restrict' }),
+    tokenHash: text('token_hash').notNull(),
+    status: membershipInvitationStatus('status').notNull().default('pending'),
+    invitedByUserId: refId('invited_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    acceptedByUserId: refId('accepted_by_user_id').references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    lastSentAt: timestamp('last_sent_at', { withTimezone: true }).notNull().defaultNow(),
+    acceptedAt: timestamp('accepted_at', { withTimezone: true }),
+    revokedAt: timestamp('revoked_at', { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex('membership_invitations_token_hash_unique').on(table.tokenHash),
+    index('membership_invitations_org_status_idx').on(table.organisationId, table.status),
+    index('membership_invitations_org_email_idx').on(table.organisationId, table.email),
+  ],
+);
+
+/**
  * Phase-1 stub for applicant-representative access (e.g. a parent acting for a
  * child, or an authorised advocate). Tenant-owned. Access granted here is
  * always time-boxed, revocable and, when the consent domain lands, tied to a
@@ -218,6 +262,28 @@ export const membershipRolesRelations = relations(membershipRoles, ({ one }) => 
     references: [roles.id],
   }),
 }));
+
+export const membershipInvitationsRelations = relations(
+  membershipInvitations,
+  ({ one }) => ({
+    organisation: one(organisations, {
+      fields: [membershipInvitations.organisationId],
+      references: [organisations.id],
+    }),
+    role: one(roles, {
+      fields: [membershipInvitations.roleId],
+      references: [roles.id],
+    }),
+    invitedBy: one(users, {
+      fields: [membershipInvitations.invitedByUserId],
+      references: [users.id],
+    }),
+    acceptedBy: one(users, {
+      fields: [membershipInvitations.acceptedByUserId],
+      references: [users.id],
+    }),
+  }),
+);
 
 export const representativeAuthorisationsRelations = relations(
   representativeAuthorisations,

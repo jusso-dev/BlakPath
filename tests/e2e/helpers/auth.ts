@@ -36,7 +36,9 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Email').fill(ADMIN_EMAIL);
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/(?:select-organisation|dashboard)$/);
+  await expect(page).toHaveURL(/\/(?:select-organisation|dashboard)$/, {
+    timeout: 30_000,
+  });
 }
 
 export async function selectDevelopmentOrganisation(page: Page): Promise<void> {

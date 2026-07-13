@@ -27,6 +27,14 @@ export const membershipStatus = pgEnum('membership_status', [
   'revoked',
 ]);
 
+/** Lifecycle of an email invitation to join one organisation. */
+export const membershipInvitationStatus = pgEnum('membership_invitation_status', [
+  'pending',
+  'accepted',
+  'revoked',
+  'expired',
+]);
+
 /** Lifecycle of a representative-authorisation grant. */
 export const authorisationStatus = pgEnum('authorisation_status', [
   'pending',

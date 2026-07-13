@@ -8,6 +8,7 @@ test('sensitive APIs consistently reject anonymous requests', async ({ request }
     '/api/notifications',
     '/api/calendar/meetings',
     '/api/memberships',
+    '/api/membership-invitations',
     '/api/reports/exports',
     '/api/keys',
     '/api/webhooks',
@@ -25,6 +26,11 @@ test('sensitive APIs consistently reject anonymous requests', async ({ request }
 
   const resourceId = '00000000-0000-4000-8000-000000000000';
   const protectedMutations = [
+    {
+      method: 'post',
+      path: '/api/membership-invitations/accept',
+      data: { token: 'not-a-real-membership-invitation-token' },
+    },
     {
       method: 'post',
       path: `/api/applications/${resourceId}/evidence`,

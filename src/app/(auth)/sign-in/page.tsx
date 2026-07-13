@@ -26,6 +26,14 @@ import { signIn } from '@/lib/auth/client';
 const GENERIC_ERROR =
   'Those sign-in details didn’t match. Check your email and password and try again.';
 
+/** Keep invitation sign-in continuity without accepting arbitrary redirect URLs. */
+function safeReturnPath(): string {
+  const requested = new URLSearchParams(window.location.search).get('returnTo');
+  return requested && /^\/join\/[A-Za-z0-9_-]{20,200}$/.test(requested)
+    ? requested
+    : '/dashboard';
+}
+
 export default function SignInPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -45,11 +53,12 @@ export default function SignInPage() {
     setError(null);
     setPending(true);
 
+    const returnPath = safeReturnPath();
     const { error: signInError } = await signIn.email({
       email,
       password,
       rememberMe,
-      callbackURL: '/dashboard',
+      callbackURL: returnPath,
     });
 
     if (signInError) {
@@ -60,7 +69,7 @@ export default function SignInPage() {
 
     // Success without a two-factor step: navigate ourselves. When two-factor
     // is owed, the client hook redirects to /sign-in/two-factor instead.
-    window.location.href = '/dashboard';
+    window.location.href = returnPath;
   }
 
   async function handlePasskey() {
@@ -77,7 +86,7 @@ export default function SignInPage() {
       return;
     }
 
-    window.location.href = '/dashboard';
+    window.location.href = safeReturnPath();
   }
 
   return (

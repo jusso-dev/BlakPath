@@ -1,7 +1,19 @@
 export {
+  acceptMembershipInvitation,
   addMember,
+  changeMemberRole,
   changeMemberStatus,
+  createMembershipInvitation,
+  getMembershipInvitationPreview,
   listAssignableRoles,
   listManagedMembers,
+  listMembershipInvitations,
+  resendMembershipInvitation,
+  revokeMembershipInvitation,
 } from './service';
-export type { ManagedMember } from './service';
+export type {
+  AssignableRole,
+  ManagedMember,
+  ManagedMembershipInvitation,
+  MembershipInvitationPreview,
+} from './service';
