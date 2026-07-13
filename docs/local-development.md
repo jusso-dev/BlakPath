@@ -114,6 +114,7 @@ or email, keep it running.
 | `pnpm test` / `pnpm test:watch`                        | Vitest unit + integration                   |
 | `pnpm test:e2e`                                        | Playwright e2e                              |
 | `pnpm test:live`                                       | Disposable full-service Playwright drill    |
+| `pnpm test:restore`                                    | Disposable backup and restore exercise      |
 | `pnpm db:migrate` / `pnpm db:seed`                     | Migrate / seed                              |
 | `pnpm db:generate` / `pnpm db:push` / `pnpm db:studio` | Drizzle Kit tools                           |
 

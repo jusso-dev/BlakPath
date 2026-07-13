@@ -4,6 +4,7 @@ import { logger } from '@/lib/observability/logger';
 import { closeQueues, type TenantJob } from '@/lib/queues';
 import { PROCESSORS, REGISTERED_QUEUES } from './processors';
 import { startTenantScheduleSync } from './scheduler';
+import { queueFailureSignal } from './operational-signals';
 
 /**
  * BlakPath background worker bootstrap.
@@ -55,9 +56,10 @@ const workers: Worker<TenantJob>[] = REGISTERED_QUEUES.map((queueName) => {
   );
 
   worker.on('failed', (job, err) => {
+    const failure = queueFailureSignal(job);
     childLogger.error(
-      { jobId: job?.id, attemptsMade: job?.attemptsMade, err },
-      'job failed',
+      { jobId: job?.id, ...failure, err },
+      failure.alert ? 'job retries exhausted' : 'job failed; retry scheduled',
     );
   });
 

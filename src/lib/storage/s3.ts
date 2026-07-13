@@ -31,10 +31,14 @@ export const s3: S3Client =
     // MinIO / self-hosted requires path-style addressing.
     forcePathStyle: env.S3_FORCE_PATH_STYLE,
     ...(env.S3_ENDPOINT ? { endpoint: env.S3_ENDPOINT } : {}),
-    credentials: {
-      accessKeyId: env.S3_ACCESS_KEY_ID,
-      secretAccessKey: env.S3_SECRET_ACCESS_KEY,
-    },
+    ...(env.S3_ACCESS_KEY_ID && env.S3_SECRET_ACCESS_KEY
+      ? {
+          credentials: {
+            accessKeyId: env.S3_ACCESS_KEY_ID,
+            secretAccessKey: env.S3_SECRET_ACCESS_KEY,
+          },
+        }
+      : {}),
   });
 
 if (env.NODE_ENV !== 'production') {
@@ -52,8 +56,15 @@ const PRESIGN_TTL_SECONDS = 300;
  * environments. Local S3-compatible endpoints may not have a KMS configured,
  * so development relies on the local volume controls instead.
  */
-function serverSideEncryption(): ServerSideEncryption {
-  return env.NODE_ENV === 'production' ? 'aws:kms' : 'AES256';
+function encryptionOptions(): {
+  ServerSideEncryption: ServerSideEncryption;
+  SSEKMSKeyId?: string;
+} {
+  if (env.NODE_ENV !== 'production') return { ServerSideEncryption: 'AES256' };
+  if (!env.S3_KMS_KEY_ID) {
+    throw new Error('S3_KMS_KEY_ID is required for production object writes');
+  }
+  return { ServerSideEncryption: 'aws:kms', SSEKMSKeyId: env.S3_KMS_KEY_ID };
 }
 
 const KEY_SEGMENT = /^[A-Za-z0-9._-]+$/;
@@ -103,18 +114,25 @@ export async function presignUpload(params: {
   contentLength: number;
 }): Promise<PresignedUpload> {
   assertOwnedKey(params.organisationId, params.key);
-  const encryption = env.S3_ENDPOINT ? undefined : serverSideEncryption();
+  const encryption = env.S3_ENDPOINT ? undefined : encryptionOptions();
   const command = new PutObjectCommand({
     Bucket: QUARANTINE_BUCKET,
     Key: params.key,
     ContentType: params.contentType,
     ContentLength: params.contentLength,
-    ...(encryption ? { ServerSideEncryption: encryption } : {}),
+    ...encryption,
   });
   const url = await getSignedUrl(s3, command, { expiresIn: PRESIGN_TTL_SECONDS });
   return {
     url,
-    headers: encryption ? { 'x-amz-server-side-encryption': encryption } : {},
+    headers: encryption
+      ? {
+          'x-amz-server-side-encryption': encryption.ServerSideEncryption,
+          ...(encryption.SSEKMSKeyId
+            ? { 'x-amz-server-side-encryption-aws-kms-key-id': encryption.SSEKMSKeyId }
+            : {}),
+        }
+      : {},
     bucket: QUARANTINE_BUCKET,
     key: params.key,
     expiresIn: PRESIGN_TTL_SECONDS,
@@ -152,13 +170,13 @@ export async function moveQuarantineToEvidence(params: {
   key: string;
 }): Promise<{ bucket: string; key: string }> {
   assertOwnedKey(params.organisationId, params.key);
-  const encryption = env.S3_ENDPOINT ? undefined : serverSideEncryption();
+  const encryption = env.S3_ENDPOINT ? undefined : encryptionOptions();
   await s3.send(
     new CopyObjectCommand({
       Bucket: EVIDENCE_BUCKET,
       Key: params.key,
       CopySource: `/${QUARANTINE_BUCKET}/${params.key}`,
-      ...(encryption ? { ServerSideEncryption: encryption } : {}),
+      ...encryption,
       MetadataDirective: 'COPY',
     }),
   );
@@ -208,7 +226,7 @@ export async function putObjectBytes(params: {
       Key: params.key,
       Body: params.body,
       ContentType: params.contentType,
-      ServerSideEncryption: serverSideEncryption(),
+      ...(env.S3_ENDPOINT ? {} : encryptionOptions()),
     }),
   );
 }

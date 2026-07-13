@@ -88,21 +88,21 @@ function chainLockKey(organisationId: string | null): bigint {
 /** The transaction handle drizzle passes to a `db.transaction(...)` callback. */
 type DbTransaction = Parameters<Parameters<Database['transaction']>[0]>[0];
 
-async function currentTipHash(
+async function currentTip(
   tx: Database | DbTransaction,
   organisationId: string | null,
-): Promise<string | null> {
+): Promise<{ hash: string; timestamp: Date } | null> {
   const whereChain =
     organisationId === null
       ? isNull(auditEvents.organisationId)
       : eq(auditEvents.organisationId, organisationId);
   const rows = await tx
-    .select({ hash: auditEvents.hash })
+    .select({ hash: auditEvents.hash, timestamp: auditEvents.timestamp })
     .from(auditEvents)
     .where(whereChain)
     .orderBy(desc(auditEvents.timestamp), desc(auditEvents.id))
     .limit(1);
-  return rows[0]?.hash ?? null;
+  return rows[0] ?? null;
 }
 
 /**
@@ -142,9 +142,6 @@ export async function recordAudit(input: RecordAuditInput): Promise<RecordedAudi
     : null;
   const afterMeta = input.after ? redactMeta(input.after.data, input.after.allow) : null;
 
-  const id = uuidv7();
-  const timestamp = new Date();
-
   const lockKey = chainLockKey(organisationId);
 
   return db.transaction(async (tx) => {
@@ -152,7 +149,35 @@ export async function recordAudit(input: RecordAuditInput): Promise<RecordedAudi
     // automatically when the transaction commits or rolls back.
     await tx.execute(sql`select pg_advisory_xact_lock(${lockKey})`);
 
-    const prevHash = await currentTipHash(tx, organisationId);
+    // Event ordering fields must be created AFTER acquiring the chain lock.
+    // Generating them before the wait lets a later request commit first while
+    // retaining a later timestamp, which makes the persisted link order differ
+    // from the verifier's (timestamp, id) order under concurrent appends.
+    const clockRows = await tx.execute(
+      sql<{ timestamp: Date }>`select clock_timestamp() as timestamp`,
+    );
+    const rawTimestamp = clockRows[0]?.timestamp as Date | string | undefined;
+    const databaseTimestamp =
+      rawTimestamp instanceof Date
+        ? rawTimestamp
+        : typeof rawTimestamp === 'string'
+          ? new Date(rawTimestamp)
+          : null;
+    if (!databaseTimestamp || Number.isNaN(databaseTimestamp.getTime())) {
+      throw new Error('Database clock did not return an audit timestamp');
+    }
+    const tip = await currentTip(tx, organisationId);
+    // postgres-js represents timestamps as millisecond JavaScript Dates. Two
+    // processes can therefore observe different microseconds that collapse to
+    // the same millisecond. Make the stored ordering key strictly monotonic for
+    // this locked chain so verification never falls back to cross-process UUID
+    // ordering for events that were actually appended in sequence.
+    const timestamp =
+      tip && databaseTimestamp.getTime() <= tip.timestamp.getTime()
+        ? new Date(tip.timestamp.getTime() + 1)
+        : databaseTimestamp;
+    const id = uuidv7();
+    const prevHash = tip?.hash ?? null;
 
     const hashable: HashableAuditEvent = {
       id,

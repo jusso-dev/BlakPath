@@ -147,20 +147,22 @@ The app runs at <http://localhost:3000>.
 
 ## Common commands
 
-| Command            | Purpose                                       |
-| ------------------ | --------------------------------------------- |
-| `pnpm dev`         | Run the Next.js app in development            |
-| `pnpm worker:dev`  | Run the BullMQ background worker (watch mode) |
-| `pnpm typecheck`   | `tsc --noEmit` (strict)                       |
-| `pnpm lint`        | ESLint                                        |
-| `pnpm test`        | Unit + integration tests (Vitest)             |
-| `pnpm test:e2e`    | End-to-end tests (Playwright)                 |
-| `pnpm test:live`   | Full live-service Playwright verification     |
-| `pnpm screenshot`  | Refresh the README screenshot gallery         |
-| `pnpm db:generate` | Generate a migration from schema changes      |
-| `pnpm db:migrate`  | Apply migrations                              |
-| `pnpm db:studio`   | Open Drizzle Studio                           |
-| `pnpm db:seed`     | Seed baseline data                            |
+| Command              | Purpose                                       |
+| -------------------- | --------------------------------------------- |
+| `pnpm dev`           | Run the Next.js app in development            |
+| `pnpm worker:dev`    | Run the BullMQ background worker (watch mode) |
+| `pnpm typecheck`     | `tsc --noEmit` (strict)                       |
+| `pnpm lint`          | ESLint                                        |
+| `pnpm test`          | Unit + integration tests (Vitest)             |
+| `pnpm test:e2e`      | End-to-end tests (Playwright)                 |
+| `pnpm test:live`     | Full live-service Playwright verification     |
+| `pnpm test:restore`  | Backup, restore and recovery verification     |
+| `pnpm release:check` | Validate production configuration and roles   |
+| `pnpm screenshot`    | Refresh the README screenshot gallery         |
+| `pnpm db:generate`   | Generate a migration from schema changes      |
+| `pnpm db:migrate`    | Apply migrations                              |
+| `pnpm db:studio`     | Open Drizzle Studio                           |
+| `pnpm db:seed`       | Seed baseline data                            |
 
 Accessibility acceptance coverage and the required assisted-review record are
 documented in [`docs/accessibility-acceptance.md`](docs/accessibility-acceptance.md).
@@ -205,6 +207,7 @@ BlakPath/
 | [`docs/threat-model.md`](docs/threat-model.md)                         | Assets, trust boundaries, STRIDE analysis, mitigations, fail-secure                            |
 | [`docs/privacy-architecture.md`](docs/privacy-architecture.md)         | Data minimisation, sovereignty, envelope encryption, AI boundaries                             |
 | [`docs/production-readiness.md`](docs/production-readiness.md)         | Production release gate, monitoring, backups and restore drills                                |
+| [`docs/operations-runbook.md`](docs/operations-runbook.md)             | Alert signals and incident response actions                                                    |
 | [`docs/evidence-scanning-design.md`](docs/evidence-scanning-design.md) | Secure upload → quarantine → ClamAV → promote/serve lifecycle                                  |
 | [`docs/local-development.md`](docs/local-development.md)               | Setup, services, commands, testing, troubleshooting                                            |
 

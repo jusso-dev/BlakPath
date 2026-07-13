@@ -6,6 +6,7 @@ const baseURL = process.env.LIVE_BASE_URL ?? `http://localhost:${port}`;
 
 export default defineConfig({
   testDir: './tests/live',
+  testMatch: process.env.LIVE_TEST_MATCH ?? 'full-stack.spec.ts',
   timeout: 240_000,
   expect: { timeout: 30_000 },
   workers: 1,

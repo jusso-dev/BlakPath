@@ -165,6 +165,8 @@ const auditVerifyProcessor: ProcessorFn = async (job, logger) => {
     // not throw: the chain will not "heal" on retry.
     logger.error(
       {
+        signal: 'audit_integrity_failure',
+        alert: true,
         jobId: job.id,
         organisationId,
         correlationId,

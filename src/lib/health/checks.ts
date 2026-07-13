@@ -115,12 +115,20 @@ export async function readinessReport(): Promise<ReadinessReport> {
   if (!ready) {
     logger.warn(
       {
+        signal: 'readiness_dependency_down',
+        alert: true,
         database: database.status,
         redis: redis.status,
         storage: storage.status,
         clamav: clamav.status,
       },
       'Readiness check reported a dependency down',
+    );
+  }
+  if (clamav.status !== 'up') {
+    logger.warn(
+      { signal: 'clamav_unavailable', alert: true, clamav: clamav.status },
+      'ClamAV unavailable; evidence remains quarantined',
     );
   }
 

@@ -1,0 +1,133 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: BlakPath operational log signals and on-call alarms (ap-southeast-2).
+
+Parameters:
+  ApplicationLogGroupName:
+    Type: String
+    Description: CloudWatch log group receiving JSON logs from web and worker tasks.
+  OnCallTopicArn:
+    Type: String
+    Description: Existing ap-southeast-2 SNS topic integrated with the on-call channel.
+
+Mappings:
+  SignalMap:
+    ExhaustedJob:
+      Name: queue_job_exhausted
+      Metric: QueueJobsExhausted
+    AuditIntegrity:
+      Name: audit_integrity_failure
+      Metric: AuditIntegrityFailures
+    Scanner:
+      Name: clamav_unavailable
+      Metric: ScannerUnavailable
+    Readiness:
+      Name: readiness_dependency_down
+      Metric: ReadinessDependencyFailures
+
+Resources:
+  ExhaustedJobFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroupName
+      FilterPattern: '{ $.signal = "queue_job_exhausted" && $.alert = true }'
+      MetricTransformations:
+        - MetricNamespace: BlakPath/Operations
+          MetricName: QueueJobsExhausted
+          MetricValue: '1'
+          DefaultValue: 0
+
+  AuditIntegrityFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroupName
+      FilterPattern: '{ $.signal = "audit_integrity_failure" && $.alert = true }'
+      MetricTransformations:
+        - MetricNamespace: BlakPath/Operations
+          MetricName: AuditIntegrityFailures
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ScannerUnavailableFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroupName
+      FilterPattern: '{ $.signal = "clamav_unavailable" && $.alert = true }'
+      MetricTransformations:
+        - MetricNamespace: BlakPath/Operations
+          MetricName: ScannerUnavailable
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ReadinessFailureFilter:
+    Type: AWS::Logs::MetricFilter
+    Properties:
+      LogGroupName: !Ref ApplicationLogGroupName
+      FilterPattern: '{ $.signal = "readiness_dependency_down" && $.alert = true }'
+      MetricTransformations:
+        - MetricNamespace: BlakPath/Operations
+          MetricName: ReadinessDependencyFailures
+          MetricValue: '1'
+          DefaultValue: 0
+
+  ExhaustedJobAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: blakpath-queue-job-exhausted
+      AlarmDescription: A BullMQ job exhausted its retry policy; follow the queue-failure runbook.
+      Namespace: BlakPath/Operations
+      MetricName: QueueJobsExhausted
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OnCallTopicArn]
+      OKActions: [!Ref OnCallTopicArn]
+
+  AuditIntegrityAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: blakpath-audit-integrity-failure
+      AlarmDescription: Audit hash-chain divergence detected; preserve data and escalate immediately.
+      Namespace: BlakPath/Operations
+      MetricName: AuditIntegrityFailures
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 1
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OnCallTopicArn]
+
+  ScannerUnavailableAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: blakpath-scanner-unavailable
+      AlarmDescription: ClamAV is unavailable; evidence remains quarantined until service recovers.
+      Namespace: BlakPath/Operations
+      MetricName: ScannerUnavailable
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 2
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OnCallTopicArn]
+      OKActions: [!Ref OnCallTopicArn]
+
+  ReadinessFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: blakpath-readiness-dependency-down
+      AlarmDescription: A core dependency is preventing the web service from serving traffic.
+      Namespace: BlakPath/Operations
+      MetricName: ReadinessDependencyFailures
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 3
+      Threshold: 3
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: [!Ref OnCallTopicArn]
+      OKActions: [!Ref OnCallTopicArn]

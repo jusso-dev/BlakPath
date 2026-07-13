@@ -49,7 +49,9 @@ cleanup() {
     echo 'Background worker log:' >&2
     tail -n 200 "$worker_log" >&2
   fi
-  "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  if [[ "${BLAKPATH_LIVE_KEEP:-0}" != 1 ]]; then
+    "${compose[@]}" down -v --remove-orphans >/dev/null 2>&1 || true
+  fi
   exit "$exit_code"
 }
 trap cleanup EXIT INT TERM

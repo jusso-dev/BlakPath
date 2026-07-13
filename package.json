@@ -32,6 +32,8 @@
     "test:watch": "vitest",
     "test:e2e": "playwright test",
     "test:live": "bash scripts/verify-live-stack.sh",
+    "release:check": "tsx scripts/check-production-readiness.ts",
+    "test:restore": "bash scripts/verify-restore-drill.sh",
     "screenshot": "tsx scripts/capture-readme-screenshots.ts",
     "screenshot:landing": "tsx scripts/capture-readme-screenshot.ts",
     "db:generate": "drizzle-kit generate",

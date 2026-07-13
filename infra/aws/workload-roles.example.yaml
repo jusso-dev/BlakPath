@@ -1,0 +1,108 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Least-privilege BlakPath ECS workload roles with no standing access keys.
+
+Parameters:
+  EvidenceBucketArn:
+    Type: String
+  QuarantineBucketArn:
+    Type: String
+  EvidenceKmsKeyArn:
+    Type: String
+  RuntimeSecretArn:
+    Type: String
+  RuntimeSecretKmsKeyArn:
+    Type: String
+
+Resources:
+  WebTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BlakPathWebEvidenceAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BucketReadiness
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: [!Ref EvidenceBucketArn]
+              - Sid: QuarantineUploads
+                Effect: Allow
+                Action: s3:PutObject
+                Resource: [!Sub '${QuarantineBucketArn}/*']
+              - Sid: CleanEvidenceDownloads
+                Effect: Allow
+                Action: s3:GetObject
+                Resource: [!Sub '${EvidenceBucketArn}/*']
+              - Sid: EvidenceKms
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Resource: [!Ref EvidenceKmsKeyArn]
+
+  WorkerTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BlakPathWorkerEvidenceLifecycle
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: BucketReadiness
+                Effect: Allow
+                Action: s3:ListBucket
+                Resource: [!Ref EvidenceBucketArn, !Ref QuarantineBucketArn]
+              - Sid: QuarantineReadDelete
+                Effect: Allow
+                Action: [s3:GetObject, s3:DeleteObject]
+                Resource: [!Sub '${QuarantineBucketArn}/*']
+              - Sid: EvidencePromote
+                Effect: Allow
+                Action: [s3:GetObject, s3:PutObject, s3:DeleteObject]
+                Resource: [!Sub '${EvidenceBucketArn}/*']
+              - Sid: EvidenceKms
+                Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Resource: [!Ref EvidenceKmsKeyArn]
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: ReadRuntimeSecret
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref RuntimeSecretArn]
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: [!Ref RuntimeSecretKmsKeyArn]
+
+Outputs:
+  WebTaskRoleArn:
+    Value: !GetAtt WebTaskRole.Arn
+  WorkerTaskRoleArn:
+    Value: !GetAtt WorkerTaskRole.Arn
+  TaskExecutionRoleArn:
+    Value: !GetAtt TaskExecutionRole.Arn
