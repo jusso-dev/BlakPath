@@ -143,9 +143,10 @@ test('organisation administrators can view access controls but cannot suspend th
   await expectNoSeriousAccessibilityViolations(page);
 });
 
-test('staff can continue a case through audited intake and evidence-request steps', async ({
+test('staff can progress a case through review and a human committee decision', async ({
   page,
 }) => {
+  test.setTimeout(90_000);
   await signInAndSelectOrganisation(page);
   await page.goto('/applications');
 
@@ -188,6 +189,53 @@ test('staff can continue a case through audited intake and evidence-request step
   await page.getByRole('button', { name: 'Add note' }).click();
   await expect(page.getByRole('status')).toContainText('Case note added.');
   await expect(page.getByText(noteText, { exact: true })).toBeVisible();
+
+  await page.getByLabel('Next step').selectOption('start_review');
+  await page.getByRole('button', { name: 'Record next step' }).click();
+  await expect(page.getByText('In Review', { exact: true }).first()).toBeVisible();
+
+  const reviewText = `Observations recorded by the E2E case officer ${stamp}`;
+  await page.getByLabel('Reviewer observations').fill(reviewText);
+  await page.getByRole('button', { name: 'Record draft review' }).click();
+  await expect(page.getByText(reviewText, { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Finalise review' }).click();
+  await expect(
+    page.getByText('Review finalised for the committee record.'),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Reopen review' })).toBeVisible();
+
+  await page.getByLabel('Next step').selectOption('ready_for_committee');
+  await page.getByRole('button', { name: 'Record next step' }).click();
+  await expect(
+    page.getByText('Ready For Committee', { exact: true }).first(),
+  ).toBeVisible();
+  await expect(page.getByLabel('Next step')).toHaveValue('schedule_committee');
+  await page.getByRole('button', { name: 'Record next step' }).click();
+  await expect(page.getByText('In Committee', { exact: true }).first()).toBeVisible();
+
+  const rationale = `Committee proposal recorded by a person ${stamp}`;
+  await page
+    .getByLabel('Outcome proposed by a committee member')
+    .selectOption('confirmed');
+  await page.getByLabel('Rationale (optional)').fill(rationale);
+  await page.getByRole('button', { name: 'Record decision proposal' }).click();
+  await expect(page.getByText(rationale, { exact: true })).toBeVisible();
+
+  await page.getByLabel('Your vote').selectOption('for');
+  await page.getByLabel('Vote note (optional)').fill('Vote entered by the member.');
+  await page.getByRole('button', { name: 'Record my vote' }).click();
+  await expect(page.getByRole('button', { name: 'Change my vote' })).toBeVisible();
+  await expect(
+    page.getByText(/Recorded votes: 1 for, 0 against, 0 abstained/),
+  ).toBeVisible();
+
+  await page.getByLabel('Outcome decided by the committee').selectOption('confirmed');
+  await page
+    .getByLabel('Committee record note (optional)')
+    .fill('Final outcome entered by the authorised chair.');
+  await page.getByRole('button', { name: 'Record final outcome' }).click();
+  await expect(page.getByText('Decided', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Generate certificate' })).toBeVisible();
 
   const denied = await page.request.patch(
     '/api/applications/00000000-0000-4000-8000-000000000000',

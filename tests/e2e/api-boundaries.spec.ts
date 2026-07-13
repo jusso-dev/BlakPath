@@ -22,6 +22,40 @@ test('sensitive APIs consistently reject anonymous requests', async ({ request }
       await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
     });
   }
+
+  const resourceId = '00000000-0000-4000-8000-000000000000';
+  const protectedMutations = [
+    {
+      method: 'post',
+      path: `/api/applications/${resourceId}/reviews`,
+      data: { content: 'Human reviewer observations.' },
+    },
+    {
+      method: 'post',
+      path: `/api/applications/${resourceId}/decisions`,
+      data: { outcome: 'deferred' },
+    },
+    {
+      method: 'patch',
+      path: `/api/reviews/${resourceId}`,
+      data: { operation: 'finalise' },
+    },
+    {
+      method: 'patch',
+      path: `/api/decisions/${resourceId}`,
+      data: { operation: 'vote', choice: 'abstain' },
+    },
+  ] as const;
+
+  for (const mutation of protectedMutations) {
+    await test.step(`${mutation.path} rejects anonymous access`, async () => {
+      const response = await request[mutation.method](mutation.path, {
+        data: mutation.data,
+      });
+      expect(response.status()).toBe(401);
+      await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
+    });
+  }
 });
 
 test('public operational endpoints expose only their intended status', async ({

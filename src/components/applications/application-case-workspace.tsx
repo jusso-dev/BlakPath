@@ -33,13 +33,6 @@ interface CaseRequest {
   createdAt: string;
 }
 
-interface CaseReview {
-  id: string;
-  status: string;
-  summary: string | null;
-  createdAt: string;
-}
-
 interface CaseHistory {
   id: string;
   action: string;
@@ -72,7 +65,6 @@ export interface ApplicationCaseWorkspaceProps {
   availableActions: Array<{ value: string; label: string }>;
   evidence: CaseEvidence[];
   evidenceRequests: CaseRequest[];
-  reviews: CaseReview[];
   history: CaseHistory[];
   notes: CaseNote[];
   permissions: WorkspacePermissions;
@@ -364,31 +356,6 @@ export function ApplicationCaseWorkspace(props: ApplicationCaseWorkspaceProps) {
               </Button>
             </form>
           ) : null}
-        </section>
-
-        <section
-          aria-labelledby="reviews-heading"
-          className="border-border border-b pb-8"
-        >
-          <h2 id="reviews-heading" className="text-lg font-semibold">
-            Reviews
-          </h2>
-          {props.reviews.length === 0 ? (
-            <p className="text-muted-foreground mt-2 text-sm">
-              No reviews have been recorded.
-            </p>
-          ) : (
-            <ul className="mt-3 space-y-3 text-sm">
-              {props.reviews.map((review) => (
-                <li key={review.id}>
-                  <span className="font-medium">{displayLabel(review.status)}</span>
-                  {review.summary ? (
-                    <p className="text-muted-foreground">{review.summary}</p>
-                  ) : null}
-                </li>
-              ))}
-            </ul>
-          )}
         </section>
 
         <section aria-labelledby="notes-heading">
