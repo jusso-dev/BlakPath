@@ -210,6 +210,21 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Start evidence object storage
+        run: |
+          docker run -d --name blakpath-e2e-minio \
+            -p 9000:9000 \
+            -e MINIO_ROOT_USER=test \
+            -e MINIO_ROOT_PASSWORD=test-secret \
+            minio/minio:latest server /data
+          for attempt in {1..30}; do
+            curl -fsS http://localhost:9000/minio/health/ready && break
+            sleep 1
+          done
+          docker run --rm --network host --entrypoint /bin/sh minio/mc:latest -c '
+            mc alias set local http://localhost:9000 test test-secret &&
+            mc mb --ignore-existing local/blakpath-quarantine local/blakpath-evidence
+          '
       - run: pnpm db:migrate && pnpm db:seed
       - run: pnpm test:e2e
       - name: Upload Playwright report
