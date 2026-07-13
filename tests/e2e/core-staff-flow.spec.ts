@@ -1,6 +1,11 @@
 import axe from 'axe-core';
 import { expect, test, type Page } from '@playwright/test';
-import { ADMIN_EMAIL, signInAndSelectOrganisation } from './helpers/auth';
+import {
+  ADMIN_EMAIL,
+  APPLICANT_EMAIL,
+  APPLICANT_PASSWORD,
+  signInAndSelectOrganisation,
+} from './helpers/auth';
 
 async function expectNoSeriousAccessibilityViolations(page: Page): Promise<void> {
   await page.addScriptTag({ content: axe.source });
@@ -141,6 +146,82 @@ test('organisation administrators can view access controls but cannot suspend th
   await expect(page.getByText('You cannot change your own access here.')).toBeVisible();
   await expect(ownMembership).toContainText('active');
   await expectNoSeriousAccessibilityViolations(page);
+});
+
+test('a linked applicant uploads evidence into quarantine without download access', async ({
+  page,
+  browser,
+  baseURL,
+}) => {
+  test.setTimeout(60_000);
+  await signInAndSelectOrganisation(page);
+  await page.goto('/settings/people');
+  await page.getByLabel('Their account email').fill(APPLICANT_EMAIL);
+  await page.getByLabel('Role').selectOption({ label: 'Applicant' });
+  await page.getByRole('button', { name: 'Add staff member' }).click();
+  await expect(page.getByText('Staff member added.')).toBeVisible();
+
+  await page.goto('/applications');
+  const stamp = Date.now();
+  const applicantName = `Linked E2E applicant ${stamp}`;
+  await page.getByLabel('Name as provided').fill(applicantName);
+  await page.getByLabel('Applicant account (optional)').selectOption({
+    label: `Dev Staff Member (${APPLICANT_EMAIL})`,
+  });
+  await page.getByRole('button', { name: 'Start application' }).click();
+  await expect(page).toHaveURL(/\/applications\/[0-9a-f-]+$/);
+
+  if (!baseURL) throw new Error('Playwright baseURL is required for this test.');
+  const applicantContext = await browser.newContext({ baseURL });
+  const applicantPage = await applicantContext.newPage();
+  await applicantPage.goto('/sign-in');
+  await applicantPage.getByLabel('Email').fill(APPLICANT_EMAIL);
+  await applicantPage.getByLabel('Password').fill(APPLICANT_PASSWORD);
+  await applicantPage.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(applicantPage).toHaveURL(/\/(?:select-organisation|dashboard)$/);
+  if (/\/select-organisation$/.test(applicantPage.url())) {
+    await applicantPage
+      .getByRole('button', { name: /BlakPath Development Organisation/ })
+      .click();
+  }
+  await expect(applicantPage).toHaveURL(/\/dashboard$/);
+  await applicantPage.goto('/applications');
+  await applicantPage.getByRole('link', { name: new RegExp(applicantName) }).click();
+
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+    'base64',
+  );
+  await applicantPage.getByLabel('Upload supporting evidence').setInputFiles({
+    name: `supporting-record-${stamp}.png`,
+    mimeType: 'image/png',
+    buffer: png,
+  });
+  const completedResponse = applicantPage.waitForResponse(
+    (response) =>
+      response.request().method() === 'POST' &&
+      /\/api\/evidence\/[0-9a-f-]+\/complete$/.test(response.url()),
+  );
+  await applicantPage.getByRole('button', { name: 'Upload evidence' }).click();
+  const completed = await completedResponse;
+  expect(completed.status()).toBe(200);
+  const payload = (await completed.json()) as { evidence: { id: string } };
+
+  await expect(
+    applicantPage.getByText(
+      'Evidence uploaded to quarantine. It cannot be opened until the scan is clean.',
+    ),
+  ).toBeVisible();
+  await expect(applicantPage.getByText('Quarantined', { exact: true })).toBeVisible();
+  await expect(applicantPage.getByRole('link', { name: 'Download' })).toHaveCount(0);
+
+  const deniedDownload = await applicantPage.request.get(
+    `/api/evidence/${payload.evidence.id}/download`,
+  );
+  expect(deniedDownload.status()).toBe(403);
+  await expect(deniedDownload.json()).resolves.toEqual({ error: 'Forbidden' });
+  await expectNoSeriousAccessibilityViolations(applicantPage);
+  await applicantContext.close();
 });
 
 test('staff can progress a case through review and a human committee decision', async ({

@@ -2,6 +2,8 @@ import { expect, type Page } from '@playwright/test';
 
 export const ADMIN_EMAIL = 'admin@blakpath.local';
 export const ADMIN_PASSWORD = 'blakpath-dev-admin-2026';
+export const APPLICANT_EMAIL = 'staff@blakpath.local';
+export const APPLICANT_PASSWORD = 'blakpath-dev-staff-2026';
 
 let selectedAdminCookies:
   | Awaited<ReturnType<ReturnType<Page['context']>['cookies']>>
@@ -12,10 +14,15 @@ export async function signIn(page: Page): Promise<void> {
   await page.getByLabel('Email').fill(ADMIN_EMAIL);
   await page.getByLabel('Password').fill(ADMIN_PASSWORD);
   await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-  await expect(page).toHaveURL(/\/select-organisation$/);
+  await expect(page).toHaveURL(/\/(?:select-organisation|dashboard)$/);
 }
 
 export async function selectDevelopmentOrganisation(page: Page): Promise<void> {
+  if (/\/dashboard$/.test(page.url())) {
+    await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();
+    selectedAdminCookies = await page.context().cookies();
+    return;
+  }
   await page.getByRole('button', { name: /BlakPath Development Organisation/ }).click();
   await expect(page).toHaveURL(/\/dashboard$/);
   await expect(page.getByRole('heading', { name: 'Dashboard' })).toBeVisible();

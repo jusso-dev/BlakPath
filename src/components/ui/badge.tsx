@@ -18,11 +18,11 @@ const badgeVariants = cva(
     variants: {
       tone: {
         neutral: 'border-border-strong bg-status-neutral-surface text-foreground',
-        success: 'border-status-success/40 bg-status-success-surface text-status-success',
-        warning: 'border-status-warning/40 bg-status-warning-surface text-status-warning',
+        success: 'border-status-success/40 bg-status-success-surface text-foreground',
+        warning: 'border-status-warning/40 bg-status-warning-surface text-foreground',
         destructive:
-          'border-status-destructive/40 bg-status-destructive-surface text-status-destructive',
-        info: 'border-status-info/40 bg-status-info-surface text-status-info',
+          'border-status-destructive/40 bg-status-destructive-surface text-foreground',
+        info: 'border-status-info/40 bg-status-info-surface text-foreground',
       },
     },
     defaultVariants: {

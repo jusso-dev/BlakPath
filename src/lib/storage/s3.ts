@@ -48,8 +48,9 @@ export const EVIDENCE_BUCKET = env.S3_BUCKET_EVIDENCE;
 const PRESIGN_TTL_SECONDS = 300;
 
 /**
- * SSE expectation: KMS in production, AES256 elsewhere. The bucket policy also
- * enforces encryption at rest; setting it on the request is defence-in-depth.
+ * SSE expectation: KMS in production, AES256 for AWS-backed non-production
+ * environments. Local S3-compatible endpoints may not have a KMS configured,
+ * so development relies on the local volume controls instead.
  */
 function serverSideEncryption(): ServerSideEncryption {
   return env.NODE_ENV === 'production' ? 'aws:kms' : 'AES256';
@@ -84,6 +85,7 @@ function assertOwnedKey(organisationId: string, key: string): void {
 
 export interface PresignedUpload {
   url: string;
+  headers: Readonly<Record<string, string>>;
   bucket: string;
   key: string;
   expiresIn: number;
@@ -101,16 +103,18 @@ export async function presignUpload(params: {
   contentLength: number;
 }): Promise<PresignedUpload> {
   assertOwnedKey(params.organisationId, params.key);
+  const encryption = env.S3_ENDPOINT ? undefined : serverSideEncryption();
   const command = new PutObjectCommand({
     Bucket: QUARANTINE_BUCKET,
     Key: params.key,
     ContentType: params.contentType,
     ContentLength: params.contentLength,
-    ServerSideEncryption: serverSideEncryption(),
+    ...(encryption ? { ServerSideEncryption: encryption } : {}),
   });
   const url = await getSignedUrl(s3, command, { expiresIn: PRESIGN_TTL_SECONDS });
   return {
     url,
+    headers: encryption ? { 'x-amz-server-side-encryption': encryption } : {},
     bucket: QUARANTINE_BUCKET,
     key: params.key,
     expiresIn: PRESIGN_TTL_SECONDS,
@@ -148,12 +152,13 @@ export async function moveQuarantineToEvidence(params: {
   key: string;
 }): Promise<{ bucket: string; key: string }> {
   assertOwnedKey(params.organisationId, params.key);
+  const encryption = env.S3_ENDPOINT ? undefined : serverSideEncryption();
   await s3.send(
     new CopyObjectCommand({
       Bucket: EVIDENCE_BUCKET,
       Key: params.key,
       CopySource: `/${QUARANTINE_BUCKET}/${params.key}`,
-      ServerSideEncryption: serverSideEncryption(),
+      ...(encryption ? { ServerSideEncryption: encryption } : {}),
       MetadataDirective: 'COPY',
     }),
   );

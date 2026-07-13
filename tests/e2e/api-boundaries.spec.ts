@@ -27,6 +27,20 @@ test('sensitive APIs consistently reject anonymous requests', async ({ request }
   const protectedMutations = [
     {
       method: 'post',
+      path: `/api/applications/${resourceId}/evidence`,
+      data: {
+        fileName: 'record.png',
+        contentType: 'image/png',
+        sizeBytes: 100,
+      },
+    },
+    {
+      method: 'post',
+      path: `/api/evidence/${resourceId}/complete`,
+      data: {},
+    },
+    {
+      method: 'post',
       path: `/api/applications/${resourceId}/reviews`,
       data: { content: 'Human reviewer observations.' },
     },

@@ -122,6 +122,9 @@ export default async function ApplicationDetailPage({
               'application:read-assigned',
               'application:update-intake',
             ]),
+            uploadEvidence:
+              application.applicantUserId === ctx.userId &&
+              hasPermission(subject, 'evidence:upload-own'),
           },
         },
         governance: {

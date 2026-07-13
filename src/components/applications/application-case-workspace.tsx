@@ -54,6 +54,7 @@ interface WorkspacePermissions {
   requestEvidence: boolean;
   downloadEvidence: boolean;
   addNote: boolean;
+  uploadEvidence: boolean;
 }
 
 export interface ApplicationCaseWorkspaceProps {
@@ -106,6 +107,62 @@ export function ApplicationCaseWorkspace(props: ApplicationCaseWorkspaceProps) {
   const [requestDue, setRequestDue] = useState('');
   const [noteBody, setNoteBody] = useState('');
   const [noteVisibility, setNoteVisibility] = useState('staff');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+
+  async function uploadEvidence(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedFile) return;
+    setBusy('upload-evidence');
+    setError(null);
+    setMessage(null);
+    try {
+      const request = await fetch(`/api/applications/${props.applicationId}/evidence`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: selectedFile.name,
+          contentType: selectedFile.type,
+          sizeBytes: selectedFile.size,
+        }),
+      });
+      if (!request.ok) {
+        setError('This file could not be prepared for upload. Check its type and size.');
+        return;
+      }
+      const prepared = (await request.json()) as {
+        evidence: { id: string };
+        upload: { url: string; headers: Record<string, string> };
+      };
+      const uploaded = await fetch(prepared.upload.url, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': selectedFile.type,
+          ...prepared.upload.headers,
+        },
+        body: selectedFile,
+      });
+      if (!uploaded.ok) {
+        setError('The file upload did not complete. Please try again.');
+        return;
+      }
+      const completed = await fetch(`/api/evidence/${prepared.evidence.id}/complete`, {
+        method: 'POST',
+      });
+      if (!completed.ok) {
+        setError('The file arrived, but its security scan could not be started.');
+        return;
+      }
+      setSelectedFile(null);
+      setMessage(
+        'Evidence uploaded to quarantine. It cannot be opened until the scan is clean.',
+      );
+      router.refresh();
+    } catch {
+      setError('The evidence upload could not be completed. Check your connection.');
+    } finally {
+      setBusy(null);
+    }
+  }
 
   async function mutate(
     key: string,
@@ -308,6 +365,31 @@ export function ApplicationCaseWorkspace(props: ApplicationCaseWorkspaceProps) {
               })}
             </ul>
           )}
+
+          {props.permissions.uploadEvidence ? (
+            <form className="border-border mt-6 border-t pt-5" onSubmit={uploadEvidence}>
+              <Label htmlFor="evidence-file">Upload supporting evidence</Label>
+              <Input
+                id="evidence-file"
+                className="mt-2"
+                type="file"
+                accept="application/pdf,image/jpeg,image/png"
+                required
+                onChange={(event) => setSelectedFile(event.target.files?.[0] ?? null)}
+              />
+              <p className="text-muted-foreground mt-2 text-xs">
+                PDF, JPEG or PNG, up to 25 MB. The file is quarantined until its malware
+                scan is clean.
+              </p>
+              <Button
+                className="mt-3"
+                type="submit"
+                disabled={!selectedFile || busy !== null}
+              >
+                {busy === 'upload-evidence' ? 'Uploading…' : 'Upload evidence'}
+              </Button>
+            </form>
+          ) : null}
 
           {props.evidenceRequests.length > 0 ? (
             <div className="mt-6">

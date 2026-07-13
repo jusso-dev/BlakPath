@@ -18,6 +18,12 @@ export interface RegisterApplication {
   createdAt: string;
 }
 
+export interface RegisterParticipant {
+  userId: string;
+  name: string;
+  email: string;
+}
+
 function label(value: string): string {
   return value.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -25,13 +31,18 @@ function label(value: string): string {
 /** A deliberately plain register: find a case, then take the next safe action. */
 export function ApplicationRegister({
   applications,
+  participants,
+  canCreate,
 }: {
   applications: RegisterApplication[];
+  participants: RegisterParticipant[];
+  canCreate: boolean;
 }) {
   const router = useRouter();
   const [query, setQuery] = useState('');
   const [name, setName] = useState('');
   const [priority, setPriority] = useState('normal');
+  const [applicantUserId, setApplicantUserId] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -54,7 +65,11 @@ export function ApplicationRegister({
       const response = await fetch('/api/applications', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ applicantName: name, priority }),
+        body: JSON.stringify({
+          applicantName: name,
+          priority,
+          applicantUserId: applicantUserId || undefined,
+        }),
       });
       if (!response.ok) {
         setError(
@@ -87,41 +102,63 @@ export function ApplicationRegister({
             organisation does, it never makes a determination about a person.
           </p>
         </div>
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Start an application</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <form className="flex flex-col gap-4" onSubmit={create}>
-              <div className="grid gap-2">
-                <Label htmlFor="applicant-name">Name as provided</Label>
-                <Input
-                  id="applicant-name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  maxLength={200}
-                  required
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label htmlFor="application-priority">Handling priority</Label>
-                <select
-                  id="application-priority"
-                  value={priority}
-                  onChange={(event) => setPriority(event.target.value)}
-                  className="border-input bg-surface h-10 rounded-md border px-3 text-sm"
-                >
-                  <option value="normal">Normal</option>
-                  <option value="high">High</option>
-                  <option value="low">Low</option>
-                </select>
-              </div>
-              <Button type="submit" disabled={busy}>
-                {busy ? 'Starting…' : 'Start application'}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+        {canCreate ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Start an application</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <form className="flex flex-col gap-4" onSubmit={create}>
+                <div className="grid gap-2">
+                  <Label htmlFor="applicant-name">Name as provided</Label>
+                  <Input
+                    id="applicant-name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    maxLength={200}
+                    required
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="applicant-account">Applicant account (optional)</Label>
+                  <select
+                    id="applicant-account"
+                    value={applicantUserId}
+                    onChange={(event) => setApplicantUserId(event.target.value)}
+                    className="border-input bg-surface h-10 rounded-md border px-3 text-sm"
+                  >
+                    <option value="">Not linked yet</option>
+                    {participants.map((participant) => (
+                      <option key={participant.userId} value={participant.userId}>
+                        {participant.name} ({participant.email})
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-muted-foreground text-xs">
+                    Linking lets the applicant view this case and upload their own
+                    evidence.
+                  </p>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="application-priority">Handling priority</Label>
+                  <select
+                    id="application-priority"
+                    value={priority}
+                    onChange={(event) => setPriority(event.target.value)}
+                    className="border-input bg-surface h-10 rounded-md border px-3 text-sm"
+                  >
+                    <option value="normal">Normal</option>
+                    <option value="high">High</option>
+                    <option value="low">Low</option>
+                  </select>
+                </div>
+                <Button type="submit" disabled={busy}>
+                  {busy ? 'Starting…' : 'Start application'}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
+        ) : null}
       </section>
 
       {error ? (

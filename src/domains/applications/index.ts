@@ -56,6 +56,7 @@ export {
   createApplication,
   getApplication,
   getApplicationCaseRecord,
+  listApplicationParticipants,
   listApplications,
   transitionApplication,
   updateIntake,
@@ -63,6 +64,7 @@ export {
   type ApplicationCaseRecord,
   type ApplicationDetail,
   type ApplicationNoteRow,
+  type ApplicationParticipant,
   type ApplicationRow,
   type ApplicationStatusHistoryRow,
 } from './service';

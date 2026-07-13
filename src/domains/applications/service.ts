@@ -5,6 +5,10 @@ import {
   applicationAssignments,
   applicationNotes,
   applicationStatusHistory,
+  membershipRoles,
+  memberships,
+  roles,
+  users,
 } from '@/db/schema';
 import { currentScope } from '@/db/tenant-db';
 import { recordAudit } from '@/domains/audit/service';
@@ -73,6 +77,12 @@ export interface ApplicationCaseRecord extends ApplicationDetail {
   readonly assignments: readonly ApplicationAssignmentRow[];
   readonly statusHistory: readonly ApplicationStatusHistoryRow[];
   readonly notes: readonly ApplicationNoteRow[];
+}
+
+export interface ApplicationParticipant {
+  readonly userId: string;
+  readonly name: string;
+  readonly email: string;
 }
 
 /** Assert a row was returned from an insert/update `.returning()`. */
@@ -208,6 +218,27 @@ export async function getApplicationCaseRecord(
   ]);
 
   return { ...detail, assignments, statusHistory, notes };
+}
+
+/** List active applicant-role accounts that intake staff may link to a new case. */
+export async function listApplicationParticipants(): Promise<ApplicationParticipant[]> {
+  const ctx = requireTenantContext();
+  requirePermission(subjectFromContext(ctx), 'application:create');
+  const scope = currentScope();
+  return scope.db
+    .selectDistinct({ userId: users.id, name: users.name, email: users.email })
+    .from(memberships)
+    .innerJoin(users, eq(users.id, memberships.userId))
+    .innerJoin(membershipRoles, eq(membershipRoles.membershipId, memberships.id))
+    .innerJoin(roles, eq(roles.id, membershipRoles.roleId))
+    .where(
+      scope.where(
+        memberships.organisationId,
+        eq(memberships.status, 'active'),
+        eq(roles.slug, 'applicant'),
+      ),
+    )
+    .orderBy(users.name);
 }
 
 /** Create a new application in `draft`. Requires `application:create`. */
