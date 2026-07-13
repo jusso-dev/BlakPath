@@ -65,6 +65,13 @@ const serverSchema = z.object({
   OTEL_SERVICE_NAME: z.string().default('blakpath'),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
 
+  // Background scheduler. These are deliberately intervals (rather than a
+  // server-local cron) so BullMQ persists the next run in Redis and a worker
+  // restart cannot silently skip a tenant's maintenance work.
+  AUDIT_VERIFY_INTERVAL_MS: z.coerce.number().int().min(60_000).default(86_400_000),
+  RETENTION_SWEEP_INTERVAL_MS: z.coerce.number().int().min(60_000).default(86_400_000),
+  SCHEDULER_SYNC_INTERVAL_MS: z.coerce.number().int().min(60_000).default(300_000),
+
   // Feature toggles
   AI_FEATURES_ENABLED: booleanish('false'),
 });

@@ -3,6 +3,7 @@ import { redis } from '@/lib/redis';
 import { logger } from '@/lib/observability/logger';
 import { closeQueues, type TenantJob } from '@/lib/queues';
 import { PROCESSORS, REGISTERED_QUEUES } from './processors';
+import { startTenantScheduleSync } from './scheduler';
 
 /**
  * BlakPath background worker bootstrap.
@@ -72,6 +73,7 @@ const workers: Worker<TenantJob>[] = REGISTERED_QUEUES.map((queueName) => {
 });
 
 let shuttingDown = false;
+let stopTenantScheduleSync: (() => void) | null = null;
 
 /**
  * Graceful shutdown: close every worker (waits for active jobs to settle),
@@ -94,6 +96,7 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   deadline.unref();
 
   try {
+    stopTenantScheduleSync?.();
     await Promise.all(workers.map((w) => w.close()));
     await closeQueues();
     await redis.quit();
@@ -114,6 +117,10 @@ process.on('unhandledRejection', (reason) => {
 });
 
 async function main(): Promise<void> {
+  // Create (or update) the durable per-tenant maintenance schedules before
+  // accepting jobs. A startup failure is intentional: a worker without its
+  // integrity/retention schedules is not healthy enough to serve.
+  stopTenantScheduleSync = await startTenantScheduleSync(workerLogger);
   await Promise.all(workers.map((w) => w.run()));
   workerLogger.info({ queues: REGISTERED_QUEUES }, 'blakpath worker started');
 }
