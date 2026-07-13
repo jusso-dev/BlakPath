@@ -44,7 +44,6 @@ function signSessionData(input: {
   if (!authSecret) {
     throw new Error('SCREENSHOT_AUTH_SECRET or BETTER_AUTH_SECRET is required.');
   }
-
   const payload = JSON.stringify({ ...input.session, expiresAt: input.expiresAt });
   const signature = crypto
     .createHmac('sha256', authSecret)
@@ -58,10 +57,7 @@ async function setActiveOrganisation(page: Page, organisationId: string): Promis
   const sessionDataCookie = cookies.find(
     (cookie) => cookie.name === '__Secure-blakpath.session_data',
   );
-  if (!sessionDataCookie) {
-    throw new Error('session cache cookie is missing');
-  }
-
+  if (!sessionDataCookie) throw new Error('session cache cookie is missing');
   const decoded = JSON.parse(
     Buffer.from(sessionDataCookie.value, 'base64').toString('utf8'),
   ) as {
@@ -73,10 +69,8 @@ async function setActiveOrganisation(page: Page, organisationId: string): Promis
     };
     expiresAt: number;
   };
-
   decoded.session.session.activeOrganisationId = organisationId;
   decoded.session.updatedAt = Date.now();
-
   await page.context().addCookies([
     {
       name: sessionDataCookie.name,
@@ -128,7 +122,6 @@ async function main() {
     await page.getByLabel('Email').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Sign in', exact: true }).click();
-
     await page.waitForTimeout(6000);
 
     const memberships = await page.evaluate(async () => {
@@ -153,7 +146,7 @@ async function main() {
     await page.goto(pageUrl('/dashboard'), { waitUntil: 'domcontentloaded' });
 
     await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
-    await page.getByRole('button', { name: 'Reset layout' }).waitFor();
+    await page.getByRole('button', { name: 'Reset section order' }).waitFor();
     await page.screenshot({ path: output('dashboard.png'), fullPage: true });
 
     await capture(
@@ -161,7 +154,7 @@ async function main() {
       '/board',
       async () => {
         await page.getByRole('heading', { name: 'Work board' }).waitFor();
-        await page.getByText('Review intake documents').waitFor();
+        await page.getByRole('button', { name: 'Add task' }).waitFor();
       },
       'work-board.png',
     );
@@ -171,7 +164,7 @@ async function main() {
       '/forms',
       async () => {
         await page.getByRole('heading', { name: 'Forms' }).waitFor();
-        await page.getByText('Supporting information').waitFor();
+        await page.getByRole('button', { name: 'Create a form' }).waitFor();
       },
       'forms.png',
     );

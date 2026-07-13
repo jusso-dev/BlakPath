@@ -39,6 +39,22 @@ easy to scan.
 
 </details>
 
+## A straightforward staff workspace
+
+The staff workspace is designed for people who should not need to understand
+the platform's underlying systems to use it.
+
+- The top navigation takes staff directly to the dashboard, work board,
+  meetings, forms and account settings.
+- The dashboard starts with clear counts and visual workload charts, then
+  highlights items that need attention.
+- The work board has an **Add task** action and accepts drops into every column,
+  including an empty one.
+- Empty pages explain what the page is for and offer the next useful action,
+  such as creating the first form.
+- Calendar files use plain-language actions: **Add calendar file** and
+  **Download calendar file**.
+
 ## The one rule everything else serves
 
 > **BlakPath never determines Aboriginality.**
@@ -126,6 +142,7 @@ The app runs at <http://localhost:3000>.
 | `pnpm lint`        | ESLint                                        |
 | `pnpm test`        | Unit + integration tests (Vitest)             |
 | `pnpm test:e2e`    | End-to-end tests (Playwright)                 |
+| `pnpm screenshot`  | Refresh the README screenshot gallery         |
 | `pnpm db:generate` | Generate a migration from schema changes      |
 | `pnpm db:migrate`  | Apply migrations                              |
 | `pnpm db:studio`   | Open Drizzle Studio                           |
